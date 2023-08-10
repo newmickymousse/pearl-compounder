@@ -242,6 +242,7 @@ contract Strategy is BaseTokenizedStrategy {
         
         // get PEARL, sell them for asset 
         pearlRewards.getReward();
+        console.log("C1. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
         uint256 pearlBalance = ERC20(pearl).balanceOf(address(this));
 
         if (pearlBalance > 0) {
@@ -257,8 +258,6 @@ contract Strategy is BaseTokenizedStrategy {
             uint256 pearlToTokenA = (pearlBalance * reservesAinDAI) / totalInDAI;
             uint256 pearlToTokenB = (pearlBalance * reservesBinDAI) / totalInDAI;
 
-            console.log("pearlToTokenA %d", pearlToTokenA);
-            console.log("pearlToTokenb %d", pearlToTokenB);
             // sell pearl to each asset
             if (pearlToTokenA > 0) {
                 _swapPearlForToken(tokenA, pearlToTokenA);
@@ -285,7 +284,6 @@ contract Strategy is BaseTokenizedStrategy {
         }
 
         console.log("C2. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
-        console.log("C2. DAI balance: %s", ERC20(asset).balanceOf(address(this)));
 
     }
 
