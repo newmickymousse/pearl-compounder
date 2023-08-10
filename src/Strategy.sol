@@ -257,7 +257,8 @@ contract Strategy is BaseTokenizedStrategy {
             uint256 totalInDAI = reservesAinDAI + reservesBinDAI;
             uint256 pearlToTokenA = (pearlBalance * reservesAinDAI) / totalInDAI;
             uint256 pearlToTokenB = (pearlBalance * reservesBinDAI) / totalInDAI;
-
+            console.log("pearlToTokenA balance: %s", pearlToTokenA);
+            console.log("pearlToTokenB balance: %s", pearlToTokenB);
             // sell pearl to each asset
             if (pearlToTokenA > 0) {
                 _swapPearlForToken(tokenA, pearlToTokenA);
