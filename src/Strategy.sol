@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
+import "forge-std/console.sol";
 
 import {BaseTokenizedStrategy} from "@tokenized-strategy/BaseTokenizedStrategy.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import {UniswapV3Swapper} from "@periphery/swappers/UniswapV3Swapper.sol";
+
+import {IPearlRouter} from "./interfaces/PearlFi/IPearlRouter.sol";
+import {IPair} from "./interfaces/PearlFi/IPair.sol";
+import {IRewardPool} from "./interfaces/PearlFi/IRewardPool.sol";
+import {IVoter} from "./interfaces/PearlFi/IVoter.sol";
+
+import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
+
+// import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
 //import "../interfaces/<protocol>/<Interface>.sol";
@@ -25,10 +37,40 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract Strategy is BaseTokenizedStrategy {
     using SafeERC20 for ERC20;
 
+    IPair private lpToken;
+    IUSDRExchange constant usdrExchange = IUSDRExchange(0x195F7B233947d51F4C3b756ad41a5Ddb34cEBCe0);
+    IPearlRouter constant pearlRouter = IPearlRouter(0x06374F57991CDc836E5A318569A910FE6456D230);
+    IRewardPool immutable pearlRewards;
+    IVoter constant pearlVoter = IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
+    // IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+
+    ERC20 public constant usdr = ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
+    ERC20 public constant pearl = ERC20(0x7238390d5f6F64e67c3211C343A410E2A3DEc142);
+    ERC20 public constant DAI = ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
+
     constructor(
         address _asset,
         string memory _name
-    ) BaseTokenizedStrategy(_asset, _name) {}
+    ) BaseTokenizedStrategy(_asset, _name) {
+        lpToken = IPair(_asset);
+        address _gauge = pearlVoter.gauges(_asset);
+        require(_gauge != address(0), "!gauge");
+        pearlRewards = IRewardPool(_gauge);
+
+        // ERC20(asset).safeApprove(address(router), type(uint256).max);
+        ERC20(asset).safeApprove(address(pearlRewards), type(uint256).max);
+        ERC20(lpToken.token0()).safeApprove(address(pearlRouter), type(uint256).max);
+        ERC20(lpToken.token1()).safeApprove(address(pearlRouter), type(uint256).max);
+        // ERC20(asset).safeApprove(address(usdrExchange), type(uint256).max);
+        // ERC20(asset).safeApprove(address(synapseStablePool), type(uint256).max);
+
+        // ERC20(usdr).safeApprove(address(pearlRouter), type(uint256).max);
+        // ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
+        ERC20(pearl).safeApprove(address(pearlRouter), type(uint256).max);
+
+        // ERC20(address(lpToken)).safeApprove(address(pearlRewards), type(uint256).max);
+        // ERC20(address(lpToken)).safeApprove(address(pearlRouter), type(uint256).max);
+    }
 
     /*//////////////////////////////////////////////////////////////
                 NEEDED TO BE OVERRIDEN BY STRATEGIST
@@ -49,6 +91,21 @@ contract Strategy is BaseTokenizedStrategy {
         // TODO: implement deposit logice EX:
         //
         //      lendingpool.deposit(asset, _amount ,0);
+        uint256 balanceOfLp = balanceOfAsset();
+
+        pearlRewards.deposit(_amount > balanceOfLp ? balanceOfLp : _amount);
+    }
+
+    function balanceOfAsset() public view returns (uint256) {
+        return ERC20(asset).balanceOf(address(this));
+    }
+
+    function balanceOfStakedAssets() public view returns (uint256) {
+        return pearlRewards.balanceOf(address(this));
+    }
+
+    function balanceOfRewards() public view returns (uint256) {
+        return pearl.balanceOf(address(this));
     }
 
     /**
@@ -76,6 +133,9 @@ contract Strategy is BaseTokenizedStrategy {
         // TODO: implement withdraw logic EX:
         //
         //      lendingPool.withdraw(asset, _amount);
+        uint256 balanceOfStakedLp = balanceOfStakedAssets();
+
+        pearlRewards.withdraw(_amount > balanceOfStakedLp ? balanceOfStakedLp : _amount);
     }
 
     /**
@@ -105,11 +165,128 @@ contract Strategy is BaseTokenizedStrategy {
         override
         returns (uint256 _totalAssets)
     {
-        // TODO: Implement harvesting logic and accurate accounting EX:
-        //
-        //      _claminAndSellRewards();
-        //      _totalAssets = aToken.balanceof(address(this)) + ERC20(asset).balanceOf(address(this));
-        _totalAssets = ERC20(asset).balanceOf(address(this));
+        if (!TokenizedStrategy.isShutdown()) {
+                _claimAndSellRewards();
+
+                // check if we got someting from selling the loot and deploy it
+                uint256 _balanceOfAsset = balanceOfAsset();
+                if (_balanceOfAsset > 0) {
+                    _deployFunds(_balanceOfAsset);
+                }
+        }
+        _totalAssets = balanceOfAsset() + balanceOfStakedAssets();
+    }
+
+    function _getLPReserves() internal view returns (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) {
+        tokenA = lpToken.token0(); 
+        tokenB = lpToken.token1();
+        (reservesTokenA, reservesTokenB, ) = lpToken.getReserves();
+    }
+
+    function _getValueInDAI(address token, uint256 _amount) internal view returns (uint256 amountInDAI) {
+        if (token == address(DAI)) {
+            return _amount;
+        }
+        (amountInDAI, ) = pearlRouter.getAmountOut(_amount, token, address(DAI));
+    }
+
+    function _swapPearlForToken(address _tokenOut, uint256 _amountIn) internal {
+        if (_tokenOut != address(pearl) && _amountIn > 0) {
+            if (_tokenOut == address(usdr)) {
+                IPearlRouter.route[] memory routes = new IPearlRouter.route[](1);
+                IPearlRouter.route memory route = IPearlRouter.route(
+                    address(pearl),
+                    _tokenOut,
+                    false
+                );
+                routes[0] = route;
+                console.log("Swapping PEARL for token (%s), amount: %d", ERC20(_tokenOut).symbol(), _amountIn);
+                pearlRouter.swapExactTokensForTokens(
+                    _amountIn,
+                    0,
+                    routes,
+                    address(this),
+                    block.timestamp
+                );
+            } else {
+                IPearlRouter.route[] memory routes = new IPearlRouter.route[](2);
+                IPearlRouter.route memory route1 = IPearlRouter.route(
+                    address(pearl),
+                    address(usdr),
+                    false
+                );
+                IPearlRouter.route memory route2 = IPearlRouter.route(
+                    address(usdr),
+                    _tokenOut,
+                    true
+                );
+                routes[0] = route1;
+                routes[1] = route2;
+                console.log("Swapping PEARL for token (%s), amount: %d", ERC20(_tokenOut).symbol(), _amountIn);
+                pearlRouter.swapExactTokensForTokens(
+                    _amountIn,
+                    0,
+                    routes,
+                    address(this),
+                    block.timestamp
+                );
+            }
+
+        }
+    }
+
+    function _claimAndSellRewards() internal 
+    {        
+        // claim lp fees 
+        lpToken.claimFees();
+        
+        // get PEARL, sell them for asset 
+        pearlRewards.getReward();
+        uint256 pearlBalance = ERC20(pearl).balanceOf(address(this));
+
+        if (pearlBalance > 0) {
+            // get lp reserves
+            (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) = _getLPReserves();
+            
+            // value reserves to DAI
+            uint256 reservesAinDAI = _getValueInDAI(tokenA, reservesTokenA);
+            uint256 reservesBinDAI = _getValueInDAI(tokenB, reservesTokenB);
+
+            // calculate proportion & quote needs from pearl
+            uint256 totalInDAI = reservesAinDAI + reservesBinDAI;
+            uint256 pearlToTokenA = (pearlBalance * reservesAinDAI) / totalInDAI;
+            uint256 pearlToTokenB = (pearlBalance * reservesBinDAI) / totalInDAI;
+
+            console.log("pearlToTokenA %d", pearlToTokenA);
+            console.log("pearlToTokenb %d", pearlToTokenB);
+            // sell pearl to each asset
+            if (pearlToTokenA > 0) {
+                _swapPearlForToken(tokenA, pearlToTokenA);
+            }
+            if (pearlToTokenB > 0) {
+                _swapPearlForToken(tokenB, pearlToTokenB);
+            }
+
+            // build lp
+
+            if (ERC20(tokenA).balanceOf(address(this)) > 0 && ERC20(tokenA).balanceOf(address(this)) > 0) {
+                pearlRouter.addLiquidity(
+                    tokenA, 
+                    tokenB, 
+                    lpToken.stable(), 
+                    ERC20(tokenA).balanceOf(address(this)),
+                    ERC20(tokenB).balanceOf(address(this)),
+                    1, 1,
+                    address(this), 
+                    block.timestamp
+                );
+            }
+
+        }
+
+        console.log("C2. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
+        console.log("C2. DAI balance: %s", ERC20(asset).balanceOf(address(this)));
+
     }
 
     /*//////////////////////////////////////////////////////////////

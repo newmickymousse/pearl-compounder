@@ -42,7 +42,7 @@ contract Setup is ExtendedTest, IEvents {
 
     // Fuzz from $0.01 of 1e6 stable coins up to 1 trillion of a 1e18 coin
     uint256 public maxFuzzAmount = 1e30;
-    uint256 public minFuzzAmount = 10_000;
+    uint256 public minFuzzAmount = 5_000e15;
 
     // Default prfot max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
@@ -50,8 +50,8 @@ contract Setup is ExtendedTest, IEvents {
     function setUp() public virtual {
         _setTokenAddrs();
 
-        // Set asset
-        asset = ERC20(tokenAddrs["DAI"]);
+        // Set asset StableV1 AMM - USDR/DAI (sAMM-USDR...)
+        asset = ERC20(0xBD02973b441Aa83c8EecEA158b98B5984bb1036E);
 
         // Set decimals
         decimals = asset.decimals();
