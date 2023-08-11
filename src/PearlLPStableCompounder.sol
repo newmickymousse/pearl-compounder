@@ -62,9 +62,9 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         pearlRewards = IRewardPool(_gauge);
 
         // ERC20(asset).safeApprove(address(router), type(uint256).max);
-        ERC20(asset).safeApprove(address(pearlRewards), type(uint256).max);
-        ERC20(lpToken.token0()).safeApprove(address(pearlRouter), type(uint256).max);
-        ERC20(lpToken.token1()).safeApprove(address(pearlRouter), type(uint256).max);
+        ERC20(asset).safeIncreaseAllowance(address(pearlRewards), type(uint256).max);
+        ERC20(lpToken.token0()).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
+        ERC20(lpToken.token1()).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
 
         ERC20(DAI).safeApprove(address(usdrExchange), type(uint256).max);
         ERC20(DAI).safeApprove(address(synapseStablePool), type(uint256).max);
@@ -74,11 +74,11 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         }
         if(lpToken.token1() != address(DAI)) {
             ERC20(lpToken.token1()).safeApprove(address(synapseStablePool), type(uint256).max);
-            
+
         }
 
-        ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
-        ERC20(pearl).safeApprove(address(pearlRouter), type(uint256).max);
+        ERC20(usdr).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
+        ERC20(pearl).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
 
     }
 
@@ -187,7 +187,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     }
 
     function _getLPReserves() internal view returns (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) {
-        tokenA = lpToken.token0(); 
+        tokenA = lpToken.token0();
         tokenB = lpToken.token1();
         (reservesTokenA, reservesTokenB, ) = lpToken.getReserves();
     }
@@ -217,9 +217,9 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
             console.log("SW2. PEARL for USDR, got %s USDR", usdrOut[1]);
 
             if (_tokenOut != address(usdr)) { //if we need anything but USDR, let's withdraw from tangible to get DAI first
-                
+
                 uint256 daiOut = usdrExchange.swapToUnderlying(usdrOut[1], address(this));
-                
+
                 console.log("SW3. USDR for DAI, got %s DAI", daiOut);
 
                 if (_tokenOut != address(DAI)) {
@@ -239,14 +239,14 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     }
 
 
-    function _claimAndSellRewards() internal 
-    {        
+    function _claimAndSellRewards() internal
+    {
         uint256 pearlBalanceBefore = ERC20(pearl).balanceOf(address(this));
-        
-        // claim lp fees 
+
+        // claim lp fees
         lpToken.claimFees();
-        
-        // get PEARL, sell them for asset 
+
+        // get PEARL, sell them for asset
         pearlRewards.getReward();
         uint256 pearlBalance = ERC20(pearl).balanceOf(address(this));
         console.log("C1. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
@@ -255,12 +255,12 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
             if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
                 pearl.safeTransfer(TokenizedStrategy.management(), (pearlBalance - pearlBalanceBefore) * keepPEARL / FEE_DENOMINATOR);
             }
-            
+
             pearlBalance = ERC20(pearl).balanceOf(address(this));
 
             // get lp reserves
             (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) = _getLPReserves();
-            
+
             // value reserves to DAI
             uint256 reservesAinDAI = _getValueInDAI(tokenA, reservesTokenA);
             uint256 reservesBinDAI = _getValueInDAI(tokenB, reservesTokenB);
@@ -283,13 +283,13 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
             if (ERC20(tokenA).balanceOf(address(this)) > 0 && ERC20(tokenA).balanceOf(address(this)) > 0) {
                 pearlRouter.addLiquidity(
-                    tokenA, 
-                    tokenB, 
-                    lpToken.stable(), 
+                    tokenA,
+                    tokenB,
+                    lpToken.stable(),
                     ERC20(tokenA).balanceOf(address(this)),
                     ERC20(tokenB).balanceOf(address(this)),
                     1, 1,
-                    address(this), 
+                    address(this),
                     block.timestamp
                 );
             }
@@ -365,8 +365,8 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         address _owner
     ) public view override returns (uint256) {
         TODO: If desired Implement deposit limit logic and any needed state variables .
-        
-        EX:    
+
+        EX:
             uint256 totalAssets = TokenizedStrategy.totalAssets();
             return totalAssets >= depositLimit ? 0 : depositLimit - totalAssets;
     }
@@ -394,8 +394,8 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         address _owner
     ) public view override returns (uint256) {
         TODO: If desired Implement withdraw limit logic and any needed state variables.
-        
-        EX:    
+
+        EX:
             return TokenizedStrategy.totalIdle();
     }
     */
