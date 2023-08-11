@@ -68,7 +68,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
         ERC20(DAI).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
         
-        ERC20(DAI).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
+        if (lpToken.token1() != address(DAI)) DAI.safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
         ERC20(lpToken.token0()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
         ERC20(lpToken.token1()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
 
