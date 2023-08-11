@@ -48,6 +48,9 @@ contract Strategy is BaseTokenizedStrategy {
     ERC20 public constant pearl = ERC20(0x7238390d5f6F64e67c3211C343A410E2A3DEc142);
     ERC20 public constant DAI = ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
 
+    uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
+    uint256 public constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
+
     constructor(
         address _asset,
         string memory _name
@@ -71,6 +74,11 @@ contract Strategy is BaseTokenizedStrategy {
         ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
         ERC20(pearl).safeApprove(address(pearlRouter), type(uint256).max);
 
+    }
+
+    // Set the amount of PEARL to be locked in Yearn's vePEARL voter from each harvest
+    function setKeepPEARL(uint256 _keepPEARL) external onlyManagement {
+        keepPEARL = _keepPEARL;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -227,15 +235,23 @@ contract Strategy is BaseTokenizedStrategy {
 
     function _claimAndSellRewards() internal 
     {        
+        uint256 pearlBalanceBefore = ERC20(pearl).balanceOf(address(this));
+        
         // claim lp fees 
         lpToken.claimFees();
         
         // get PEARL, sell them for asset 
         pearlRewards.getReward();
-        console.log("C1. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
         uint256 pearlBalance = ERC20(pearl).balanceOf(address(this));
+        console.log("C1. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
 
         if (pearlBalance > 0) {
+            if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
+                pearl.safeTransfer(TokenizedStrategy.management(), (pearlBalance - pearlBalanceBefore) * keepPEARL / FEE_DENOMINATOR);
+            }
+            
+            pearlBalance = ERC20(pearl).balanceOf(address(this));
+
             // get lp reserves
             (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) = _getLPReserves();
             

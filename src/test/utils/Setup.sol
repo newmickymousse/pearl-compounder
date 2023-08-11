@@ -139,8 +139,10 @@ contract Setup is ExtendedTest, IEvents {
         vm.prank(gov);
         IFactory(factory).set_protocol_fee_bps(_protocolFee);
 
-        vm.prank(management);
+        vm.startPrank(management);
         strategy.setPerformanceFee(_performanceFee);
+        strategy.setKeepPEARL(1000); // set keepPEARL to 10%
+        vm.stopPrank();
     }
 
     function _setTokenAddrs() internal {
