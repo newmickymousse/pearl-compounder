@@ -6,7 +6,9 @@ import {ExtendedTest} from "./ExtendedTest.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {Strategy} from "../../Strategy.sol";
+import {PearlLPStableCompounderFactory} from "../../PearlLPStableCompounderFactory.sol";
+import {PearlLPStableCompounder} from "../../PearlLPStableCompounder.sol";
+import {IStrategyFactoryInterface} from "../../interfaces/IStrategyFactoryInterface.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
 // Inherit the events so they can be checked if desired.
@@ -24,6 +26,7 @@ contract Setup is ExtendedTest, IEvents {
     // Contract instancees that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
+    IStrategyFactoryInterface public strategyFactory;
 
     mapping(string => address) public tokenAddrs;
 
@@ -50,15 +53,14 @@ contract Setup is ExtendedTest, IEvents {
     function setUp() public virtual {
         _setTokenAddrs();
 
-        // Set asset StableV1 AMM - USDR/DAI (sAMM-USDR...)
-        //asset = ERC20(0xBD02973b441Aa83c8EecEA158b98B5984bb1036E);
-        // Set asset StableV1 AMM - USDR/USDC (sAMM-USDR...)
-        asset = ERC20(0xD17cb0f162f133e339C0BbFc18c36c357E681D6b);
+        asset = ERC20(tokenAddrs["USDC-USDR-lp"]);
         // Set decimals
         decimals = asset.decimals();
+        strategyFactory = setUpStrategyFactory();
 
         // Deploy strategy and set variables
-        strategy = IStrategyInterface(setUpStrategy());
+        strategy = IStrategyInterface(strategyFactory.newPearlLPStableCompounder(address(asset), "AMM - USDR/USDT"));
+        setUpStrategy();
 
         factory = strategy.FACTORY();
 
@@ -69,25 +71,19 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(management, "management");
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
+        vm.label(address(strategyFactory), "strategyFactory");
     }
 
-    function setUpStrategy() public returns (address) {
-        // we save the strategy as a IStrategyInterface to give it the needed interface
-        IStrategyInterface _strategy = IStrategyInterface(
-            address(new Strategy(address(asset), "Tokenized Strategy"))
-        );
+    function setUpStrategyFactory() public returns (IStrategyFactoryInterface) {
+        IStrategyFactoryInterface _factory = IStrategyFactoryInterface(
+            address(new PearlLPStableCompounderFactory(management, performanceFeeRecipient, keeper)
+        ));
+        return _factory;
+    }
 
-        // set keeper
-        _strategy.setKeeper(keeper);
-        // set treasury
-        _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
-        // set management of the strategy
-        _strategy.setPendingManagement(management);
-
+    function setUpStrategy() public {
         vm.prank(management);
-        _strategy.acceptManagement();
-
-        return address(_strategy);
+        strategy.acceptManagement();
     }
 
     function depositIntoStrategy(
@@ -95,8 +91,17 @@ contract Setup is ExtendedTest, IEvents {
         address _user,
         uint256 _amount
     ) public {
+        depositIntoStrategy(_strategy, _user, _amount, asset);
+    }
+
+    function depositIntoStrategy(
+        IStrategyInterface _strategy,
+        address _user,
+        uint256 _amount,
+        ERC20 _asset
+    ) public {
         vm.prank(_user);
-        asset.approve(address(_strategy), _amount);
+        _asset.approve(address(_strategy), _amount);
 
         vm.prank(_user);
         _strategy.deposit(_amount, _user);
@@ -107,8 +112,17 @@ contract Setup is ExtendedTest, IEvents {
         address _user,
         uint256 _amount
     ) public {
-        airdrop(asset, _user, _amount);
-        depositIntoStrategy(_strategy, _user, _amount);
+        mintAndDepositIntoStrategy(_strategy, _user, _amount, asset);
+    }
+
+    function mintAndDepositIntoStrategy(
+        IStrategyInterface _strategy,
+        address _user,
+        uint256 _amount,
+        ERC20 _asset
+    ) public {
+        airdrop(_asset, _user, _amount);
+        depositIntoStrategy(_strategy, _user, _amount, _asset);
     }
 
     // For checking the amounts in the strategy
@@ -153,5 +167,8 @@ contract Setup is ExtendedTest, IEvents {
         tokenAddrs["USDT"] = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
         tokenAddrs["DAI"] = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
         tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        tokenAddrs["USDC-USDR-lp"] = 0xD17cb0f162f133e339C0BbFc18c36c357E681D6b;
+        tokenAddrs["DAI-USDR-lp"] = 0xBD02973b441Aa83c8EecEA158b98B5984bb1036E;
+        tokenAddrs["USDT-USDR-lp"] = 0x3f69055F203861abFd5D986dC81a2eFa7c915b0c;
     }
 }
