@@ -51,8 +51,9 @@ contract Setup is ExtendedTest, IEvents {
         _setTokenAddrs();
 
         // Set asset StableV1 AMM - USDR/DAI (sAMM-USDR...)
-        asset = ERC20(0xBD02973b441Aa83c8EecEA158b98B5984bb1036E);
-
+        //asset = ERC20(0xBD02973b441Aa83c8EecEA158b98B5984bb1036E);
+        // Set asset StableV1 AMM - USDR/USDC (sAMM-USDR...)
+        asset = ERC20(0xD17cb0f162f133e339C0BbFc18c36c357E681D6b);
         // Set decimals
         decimals = asset.decimals();
 

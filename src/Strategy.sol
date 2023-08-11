@@ -63,7 +63,8 @@ contract Strategy is BaseTokenizedStrategy {
         ERC20(lpToken.token1()).safeApprove(address(pearlRouter), type(uint256).max);
 
         ERC20(DAI).safeApprove(address(usdrExchange), type(uint256).max);
-
+        
+        ERC20(DAI).safeApprove(address(synapseStablePool), type(uint256).max);
         ERC20(lpToken.token0()).safeApprove(address(synapseStablePool), type(uint256).max);
         ERC20(lpToken.token1()).safeApprove(address(synapseStablePool), type(uint256).max);
 
@@ -199,15 +200,17 @@ contract Strategy is BaseTokenizedStrategy {
                 address(this),
                 block.timestamp
             );
-            console.log("SW3. PEARL for USDR, got %s USDR", usdrOut[1]);
+            console.log("SW2. PEARL for USDR, got %s USDR", usdrOut[1]);
 
             if (_tokenOut != address(usdr)) { //if we need anything but USDR, let's withdraw from tangible to get DAI first
                 
                 uint256 daiOut = usdrExchange.swapToUnderlying(usdrOut[1], address(this));
+                
+                console.log("SW3. USDR for DAI, got %s DAI", daiOut);
 
                 if (_tokenOut != address(DAI)) {
-                    uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
                     uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
+                    uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
                     synapseStablePool.swap(
                         daiId,
                         tokenOutId,
