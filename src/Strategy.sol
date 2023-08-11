@@ -16,7 +16,7 @@ import {IVoter} from "./interfaces/PearlFi/IVoter.sol";
 
 import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
 
-// import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
+import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
 //import "../interfaces/<protocol>/<Interface>.sol";
@@ -42,7 +42,7 @@ contract Strategy is BaseTokenizedStrategy {
     IPearlRouter constant pearlRouter = IPearlRouter(0x06374F57991CDc836E5A318569A910FE6456D230);
     IRewardPool immutable pearlRewards;
     IVoter constant pearlVoter = IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
-    // IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+    IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
 
     ERC20 public constant usdr = ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
     ERC20 public constant pearl = ERC20(0x7238390d5f6F64e67c3211C343A410E2A3DEc142);
@@ -61,15 +61,15 @@ contract Strategy is BaseTokenizedStrategy {
         ERC20(asset).safeApprove(address(pearlRewards), type(uint256).max);
         ERC20(lpToken.token0()).safeApprove(address(pearlRouter), type(uint256).max);
         ERC20(lpToken.token1()).safeApprove(address(pearlRouter), type(uint256).max);
-        // ERC20(asset).safeApprove(address(usdrExchange), type(uint256).max);
-        // ERC20(asset).safeApprove(address(synapseStablePool), type(uint256).max);
 
-        // ERC20(usdr).safeApprove(address(pearlRouter), type(uint256).max);
-        // ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
+        ERC20(DAI).safeApprove(address(usdrExchange), type(uint256).max);
+
+        ERC20(lpToken.token0()).safeApprove(address(synapseStablePool), type(uint256).max);
+        ERC20(lpToken.token1()).safeApprove(address(synapseStablePool), type(uint256).max);
+
+        ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
         ERC20(pearl).safeApprove(address(pearlRouter), type(uint256).max);
 
-        // ERC20(address(lpToken)).safeApprove(address(pearlRewards), type(uint256).max);
-        // ERC20(address(lpToken)).safeApprove(address(pearlRouter), type(uint256).max);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -88,9 +88,6 @@ contract Strategy is BaseTokenizedStrategy {
      * to deposit in the yield source.
      */
     function _deployFunds(uint256 _amount) internal override {
-        // TODO: implement deposit logice EX:
-        //
-        //      lendingpool.deposit(asset, _amount ,0);
         uint256 balanceOfLp = balanceOfAsset();
 
         pearlRewards.deposit(_amount > balanceOfLp ? balanceOfLp : _amount);
@@ -130,9 +127,6 @@ contract Strategy is BaseTokenizedStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        // TODO: implement withdraw logic EX:
-        //
-        //      lendingPool.withdraw(asset, _amount);
         uint256 balanceOfStakedLp = balanceOfStakedAssets();
 
         pearlRewards.withdraw(_amount > balanceOfStakedLp ? balanceOfStakedLp : _amount);
@@ -184,56 +178,49 @@ contract Strategy is BaseTokenizedStrategy {
     }
 
     function _getValueInDAI(address token, uint256 _amount) internal view returns (uint256 amountInDAI) {
-        if (token == address(DAI)) {
+        if (token == address(DAI) || token == address(usdr)) {
             return _amount;
         }
-        (amountInDAI, ) = pearlRouter.getAmountOut(_amount, token, address(DAI));
+
+        uint8 tokenId = synapseStablePool.getTokenIndex(token);
+        uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
+        amountInDAI = synapseStablePool.calculateSwap(tokenId, daiId, _amount );
     }
 
     function _swapPearlForToken(address _tokenOut, uint256 _amountIn) internal {
         if (_tokenOut != address(pearl) && _amountIn > 0) {
-            if (_tokenOut == address(usdr)) {
-                IPearlRouter.route[] memory routes = new IPearlRouter.route[](1);
-                IPearlRouter.route memory route = IPearlRouter.route(
-                    address(pearl),
-                    _tokenOut,
-                    false
-                );
-                routes[0] = route;
-                console.log("Swapping PEARL for token (%s), amount: %d", ERC20(_tokenOut).symbol(), _amountIn);
-                pearlRouter.swapExactTokensForTokens(
-                    _amountIn,
-                    0,
-                    routes,
-                    address(this),
-                    block.timestamp
-                );
-            } else {
-                IPearlRouter.route[] memory routes = new IPearlRouter.route[](2);
-                IPearlRouter.route memory route1 = IPearlRouter.route(
-                    address(pearl),
-                    address(usdr),
-                    false
-                );
-                IPearlRouter.route memory route2 = IPearlRouter.route(
-                    address(usdr),
-                    _tokenOut,
-                    true
-                );
-                routes[0] = route1;
-                routes[1] = route2;
-                console.log("Swapping PEARL for token (%s), amount: %d", ERC20(_tokenOut).symbol(), _amountIn);
-                pearlRouter.swapExactTokensForTokens(
-                    _amountIn,
-                    0,
-                    routes,
-                    address(this),
-                    block.timestamp
-                );
+            console.log("SW1. Swapping PEARL for token (%s), amount: %d", ERC20(_tokenOut).symbol(), _amountIn);
+            uint256[] memory usdrOut = pearlRouter.swapExactTokensForTokensSimple(
+                _amountIn,
+                0,
+                address(pearl),
+                address(usdr),
+                false,
+                address(this),
+                block.timestamp
+            );
+            console.log("SW3. PEARL for USDR, got %s USDR", usdrOut[1]);
+
+            if (_tokenOut != address(usdr)) { //if we need anything but USDR, let's withdraw from tangible to get DAI first
+                
+                uint256 daiOut = usdrExchange.swapToUnderlying(usdrOut[1], address(this));
+
+                if (_tokenOut != address(DAI)) {
+                    uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
+                    uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
+                    synapseStablePool.swap(
+                        daiId,
+                        tokenOutId,
+                        daiOut,
+                        0,
+                        block.timestamp
+                    );
+                }
             }
 
         }
     }
+
 
     function _claimAndSellRewards() internal 
     {        
