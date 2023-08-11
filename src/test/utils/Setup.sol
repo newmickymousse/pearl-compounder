@@ -91,8 +91,17 @@ contract Setup is ExtendedTest, IEvents {
         address _user,
         uint256 _amount
     ) public {
+        depositIntoStrategy(_strategy, _user, _amount, asset);
+    }
+
+    function depositIntoStrategy(
+        IStrategyInterface _strategy,
+        address _user,
+        uint256 _amount,
+        ERC20 _asset
+    ) public {
         vm.prank(_user);
-        asset.approve(address(_strategy), _amount);
+        _asset.approve(address(_strategy), _amount);
 
         vm.prank(_user);
         _strategy.deposit(_amount, _user);
@@ -103,8 +112,17 @@ contract Setup is ExtendedTest, IEvents {
         address _user,
         uint256 _amount
     ) public {
-        airdrop(asset, _user, _amount);
-        depositIntoStrategy(_strategy, _user, _amount);
+        mintAndDepositIntoStrategy(_strategy, _user, _amount, asset);
+    }
+
+    function mintAndDepositIntoStrategy(
+        IStrategyInterface _strategy,
+        address _user,
+        uint256 _amount,
+        ERC20 _asset
+    ) public {
+        airdrop(_asset, _user, _amount);
+        depositIntoStrategy(_strategy, _user, _amount, _asset);
     }
 
     // For checking the amounts in the strategy

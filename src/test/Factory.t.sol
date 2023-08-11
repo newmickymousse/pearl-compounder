@@ -20,21 +20,23 @@ contract FactoryTest is Setup {
     }
 
     function test_deploy(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
         IStrategyInterface strat1 = IStrategyInterface(strategyFactory.newPearlLPStableCompounder(tokenAddrs["USDC-USDR-lp"], "USDC-USDR-lp-compounder"));
         IStrategyInterface strat2 = IStrategyInterface(strategyFactory.newPearlLPStableCompounder(tokenAddrs["DAI-USDR-lp"], "DAI-USDR-lp-compounder"));
-        // IStrategyInterface strat3 = IStrategyInterface(strategyFactory.newPearlLPStableCompounder(tokenAddrs["USDT-USDR-lp"], "USDT-USDR-lp-compounder"));
+        IStrategyInterface strat3 = IStrategyInterface(strategyFactory.newPearlLPStableCompounder(tokenAddrs["USDT-USDR-lp"], "USDT-USDR-lp-compounder"));
         
+
         strategy_testing(strat1, _amount);
         strategy_testing(strat2, _amount);
-        // strategy_testing(strat3, _amount);
+        strategy_testing(strat3, _amount);
     }
 
     function strategy_testing(IStrategyInterface _strategy, uint256 _amount) internal {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
         ERC20 _asset = ERC20(_strategy.asset());
         console.log(_amount);
         // Deposit into strategy
-        mintAndDepositIntoStrategy(_strategy, user, _amount);
+        mintAndDepositIntoStrategy(_strategy, user, _amount, _asset);
 
         // TODO: Implement logic so totalDebt is _amount and totalIdle = 0.
         checkStrategyTotals(_strategy, _amount, _amount, 0);

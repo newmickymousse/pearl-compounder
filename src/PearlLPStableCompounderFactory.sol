@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
+import "forge-std/console.sol";
+
 
 import {PearlLPStableCompounder} from "./PearlLPStableCompounder.sol";
 
@@ -41,6 +43,7 @@ contract PearlLPStableCompounderFactory {
     ) external returns (address) {
         // We need to use the custom interface with the
         // tokenized strategies available setters.
+        console.log("asset creation strategy: %s", _asset);
         IStrategy newStrategy = IStrategy(
             address(new PearlLPStableCompounder(_asset, _name))
         );

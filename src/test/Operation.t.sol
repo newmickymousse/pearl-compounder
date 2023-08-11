@@ -12,13 +12,9 @@ contract OperationTest is Setup {
     function testSetupStrategyOK() public {
         console.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
-        console.log("strategy.asset() %s", strategy.asset());
         assertEq(strategy.asset(), address(asset));
-        console.log("strategy.management() %s", strategy.management());
         assertEq(strategy.management(), management);
-        console.log("strategy.performanceFeeRecipient() %s", strategy.performanceFeeRecipient());
         assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
-        console.log("strategy.keeper() %s", strategy.keeper());
         assertEq(strategy.keeper(), keeper);
         // TODO: add additional check on strat params
     }
