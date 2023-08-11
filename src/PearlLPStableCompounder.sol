@@ -62,18 +62,18 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         pearlRewards = IRewardPool(_gauge);
 
         // ERC20(asset).safeApprove(address(router), type(uint256).max);
-        ERC20(asset).safeApprove(address(pearlRewards), type(uint256).max);
-        ERC20(lpToken.token0()).safeApprove(address(pearlRouter), type(uint256).max);
-        ERC20(lpToken.token1()).safeApprove(address(pearlRouter), type(uint256).max);
+        ERC20(asset).safeIncreaseAllowance(address(pearlRewards), type(uint256).max);
+        ERC20(lpToken.token0()).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
+        ERC20(lpToken.token1()).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
 
-        ERC20(DAI).safeApprove(address(usdrExchange), type(uint256).max);
+        ERC20(DAI).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
         
-        ERC20(DAI).safeApprove(address(synapseStablePool), type(uint256).max);
-        ERC20(lpToken.token0()).safeApprove(address(synapseStablePool), type(uint256).max);
-        ERC20(lpToken.token1()).safeApprove(address(synapseStablePool), type(uint256).max);
+        ERC20(DAI).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
+        ERC20(lpToken.token0()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
+        ERC20(lpToken.token1()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
 
-        ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
-        ERC20(pearl).safeApprove(address(pearlRouter), type(uint256).max);
+        ERC20(usdr).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
+        ERC20(pearl).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
 
     }
 
