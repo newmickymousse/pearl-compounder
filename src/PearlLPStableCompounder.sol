@@ -34,7 +34,7 @@ import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
 
-contract Strategy is BaseTokenizedStrategy {
+contract PearlLPStableCompounder is BaseTokenizedStrategy {
     using SafeERC20 for ERC20;
 
     IPair private lpToken;
@@ -58,6 +58,7 @@ contract Strategy is BaseTokenizedStrategy {
         lpToken = IPair(_asset);
         address _gauge = pearlVoter.gauges(_asset);
         require(_gauge != address(0), "!gauge");
+        require (lpToken.stable(), "!stable");
         pearlRewards = IRewardPool(_gauge);
 
         // ERC20(asset).safeApprove(address(router), type(uint256).max);
