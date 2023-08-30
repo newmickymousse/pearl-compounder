@@ -43,14 +43,16 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     IRewardPool immutable pearlRewards;
     IVoter constant pearlVoter = IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
     IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+    bool public immutable isStable;
 
     ERC20 public constant usdr = ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
     ERC20 public constant pearl = ERC20(0x7238390d5f6F64e67c3211C343A410E2A3DEc142);
     ERC20 public constant DAI = ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
 
-    uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
+    uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
+    uint256 public slippage = 500; // 5% slippage in BPS
 
     constructor(
         address _asset,
@@ -59,7 +61,6 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         lpToken = IPair(_asset);
         address _gauge = pearlVoter.gauges(_asset);
         require(_gauge != address(0), "!gauge");
-        require (lpToken.stable(), "!stable");
         pearlRewards = IRewardPool(_gauge);
 
         // ERC20(asset).safeApprove(address(router), type(uint256).max);
@@ -67,20 +68,21 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         ERC20(lpToken.token0()).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
         ERC20(lpToken.token1()).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
 
-        ERC20(DAI).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
-        ERC20(DAI).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
-
-        if(lpToken.token0() != address(DAI)) {
-            ERC20(lpToken.token0()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
-        }
-        if(lpToken.token1() != address(DAI)) {
-            ERC20(lpToken.token1()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
-
-        }
-
         ERC20(usdr).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
         ERC20(pearl).safeIncreaseAllowance(address(pearlRouter), type(uint256).max);
 
+        isStable = lpToken.stable();
+        if (isStable) {
+            // approve synapse pool for stables only
+            ERC20(DAI).safeIncreaseAllowance(address(usdrExchange), type(uint256).max);
+            ERC20(DAI).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
+            if(lpToken.token0() != address(DAI)) {
+                ERC20(lpToken.token0()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
+            }
+            if(lpToken.token1() != address(DAI)) {
+                ERC20(lpToken.token1()).safeIncreaseAllowance(address(synapseStablePool), type(uint256).max);
+            }
+        }
     }
 
     // Set the amount of PEARL to be locked in Yearn's vePEARL voter from each harvest
@@ -92,6 +94,13 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     /// @param _minRewardsToSell amount of PEARL to be sold for asset from each harvest
     function setMinRewardsToSell(uint256 _minRewardsToSell) external onlyManagement {
         minRewardsToSell = _minRewardsToSell;
+    }
+
+    /// @notice Set the slippage for selling PEARL to volatile token in asset
+    /// @param _slippage slippage in BPS
+    function setSlippage(uint256 _slippage) external onlyManagement {
+        require(_slippage < FEE_DENOMINATOR, "!slippage");
+        slippage = _slippage;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -125,6 +134,20 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
     function balanceOfRewards() public view returns (uint256) {
         return pearl.balanceOf(address(this));
+    }
+
+    /// @notice Get pending value of rewards in DAI
+    /// @return value of pearl in DAI
+    function getClaimableRewards() external view returns (uint256) {
+        uint256 pendingPearl = pearlRewards.earned(address(this));
+        return _getValueOfPearlInDai(pendingPearl);
+    }
+
+    /// @notice Get value of rewards in DAI
+    /// @return value of pearl in DAI
+    function getRewardsValue() external view returns (uint256) {
+        uint256 pearlBalance = pearl.balanceOf(address(this));
+        return _getValueOfPearlInDai(pearlBalance);
     }
 
     /**
@@ -204,17 +227,23 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
             return _amount;
         }
 
-        uint8 tokenId = synapseStablePool.getTokenIndex(token);
-        uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
-        amountInDAI = synapseStablePool.calculateSwap(tokenId, daiId, _amount );
+        if (isStable) {
+            uint8 tokenId = synapseStablePool.getTokenIndex(token);
+            uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
+            amountInDAI = synapseStablePool.calculateSwap(tokenId, daiId, _amount);
+        } else {
+            // use DAI == USDR because it's used only for adding liquidity to pool
+           (amountInDAI, ) = pearlRouter.getAmountOut(_amount, token, address(usdr));
+        }
     }
 
     function _swapPearlForToken(address _tokenOut, uint256 _amountIn) internal {
         if (_tokenOut != address(pearl) && _amountIn > 0) {
-            console.log("SW1. Swapping PEARL for token (%s), amount: %d", ERC20(_tokenOut).symbol(), _amountIn);
+            uint256 minAmountOut = _getMinAmountOut(address(pearl), address(usdr), _amountIn);
+            console.log("SW1. Swapping PEARL for token (%s), amount: %d for minAmountOut: %d", ERC20(_tokenOut).symbol(), _amountIn, minAmountOut);
             uint256[] memory usdrOut = pearlRouter.swapExactTokensForTokensSimple(
                 _amountIn,
-                0,
+                minAmountOut,
                 address(pearl),
                 address(usdr),
                 false,
@@ -224,39 +253,43 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
             console.log("SW2. PEARL for USDR, got %s USDR", usdrOut[1]);
 
             if (_tokenOut != address(usdr)) { //if we need anything but USDR, let's withdraw from tangible to get DAI first
+                if (isStable) {
+                    uint256 daiOut = usdrExchange.swapToUnderlying(usdrOut[1], address(this));
+                    console.log("SW3a. USDR for DAI, got %s DAI", daiOut);
 
-                uint256 daiOut = usdrExchange.swapToUnderlying(usdrOut[1], address(this));
-
-                console.log("SW3. USDR for DAI, got %s DAI", daiOut);
-
-                if (_tokenOut != address(DAI)) {
-                    uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
-                    uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
-                    synapseStablePool.swap(
-                        daiId,
-                        tokenOutId,
-                        daiOut,
-                        0,
+                    if (_tokenOut != address(DAI)) {
+                        uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
+                        uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
+                        synapseStablePool.swap(
+                            daiId,
+                            tokenOutId,
+                            daiOut,
+                            0, // @todo: do we need to define minDy for stable?
+                            block.timestamp
+                        );
+                    }
+                } else {
+                    uint256 usdrBalance = usdrOut[1];
+                    minAmountOut = _getMinAmountOut(address(usdr), _tokenOut, usdrBalance);
+                    console.log("SW3b. USDR for token (%s), amount: %d for mintAmountOut: %d", ERC20(_tokenOut).symbol(), usdrBalance, minAmountOut);
+                    pearlRouter.swapExactTokensForTokensSimple(
+                        usdrBalance,
+                        minAmountOut,
+                        address(usdr),
+                        _tokenOut,
+                        false,
+                        address(this),
                         block.timestamp
                     );
+                    console.log("SW4b. token (%s), balance: %d", ERC20(_tokenOut).symbol(), ERC20(_tokenOut).balanceOf(address(this)));
                 }
             }
-
         }
     }
 
-    /// @notice Get pending value of rewards in DAI
-    /// @return value of pearl in DAI
-    function getClaimableRewards() external view returns (uint256) {
-        uint256 pendingPearl = pearlRewards.earned(address(this));
-        return _getValueOfPearlInDai(pendingPearl);
-    }
-
-    /// @notice Get value of rewards in DAI
-    /// @return value of pearl in DAI
-    function getRewardsValue() external view returns (uint256) {
-        uint256 pearlBalance = pearl.balanceOf(address(this));
-        return _getValueOfPearlInDai(pearlBalance);
+    function _getMinAmountOut(address _tokenIn, address _tokenOut, uint256 _amountIn) internal view returns (uint256 minAmountOut) {
+        (minAmountOut, ) = pearlRouter.getAmountOut(_amountIn, _tokenIn, _tokenOut);
+        minAmountOut = minAmountOut * (FEE_DENOMINATOR - slippage) / FEE_DENOMINATOR;
     }
 
     function _getValueOfPearlInDai(uint256 _amount) internal view returns (uint256) {
@@ -264,7 +297,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         routes[0] = IPearlRouter.route(address(pearl), address(usdr), false);
         routes[1] = IPearlRouter.route(address(usdr), address(DAI), true);
         uint256[] memory amounts = pearlRouter.getAmountsOut(_amount, routes);
-        return amounts[amounts.length - 1];
+        return amounts[2]; // 3 amounts, use the last one
     }
 
     function _claimAndSellRewards() internal {
@@ -312,7 +345,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
                 pearlRouter.addLiquidity(
                     tokenA,
                     tokenB,
-                    lpToken.stable(),
+                    isStable,
                     ERC20(tokenA).balanceOf(address(this)),
                     ERC20(tokenB).balanceOf(address(this)),
                     1, 1,
@@ -320,7 +353,8 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
                     block.timestamp
                 );
             }
-
+            console.log("tokenA balance: %s", ERC20(tokenA).balanceOf(address(this)));
+            console.log("tokenB balance: %s", ERC20(tokenB).balanceOf(address(this)));
         }
 
         console.log("C2. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));

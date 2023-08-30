@@ -12,14 +12,33 @@ contract OperationTest is Setup {
     function test_setMinRewardsToSell() public {
         uint256 minRewardsToSell = 123e17;
 
-        // user cannot change maxGasForMatching
+        // user cannot change minRewardsToSell
         vm.prank(user);
         vm.expectRevert("!Authorized");
         strategy.setMinRewardsToSell(minRewardsToSell);
 
-        // management can change maxGasForMatching
+        // management can change minRewardsToSell
         vm.prank(management);
         strategy.setMinRewardsToSell(minRewardsToSell);
         assertEq(strategy.minRewardsToSell(), minRewardsToSell);
+    }
+
+    function test_setSlippage() public {
+        uint256 slippage = 1000;
+
+        // user cannot change minRewardsToSell
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setSlippage(slippage);
+
+        // management can change minRewardsToSell
+        vm.prank(management);
+        strategy.setSlippage(slippage);
+        assertEq(strategy.slippage(), slippage);
+
+        // cannot change slippage above fee dominator
+        vm.prank(management);
+        vm.expectRevert("!slippage");
+        strategy.setSlippage(10001);
     }
 }
