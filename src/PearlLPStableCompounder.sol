@@ -39,7 +39,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
     IPair private lpToken;
     IUSDRExchange constant usdrExchange = IUSDRExchange(0x195F7B233947d51F4C3b756ad41a5Ddb34cEBCe0);
-    IPearlRouter constant pearlRouter = IPearlRouter(0x06374F57991CDc836E5A318569A910FE6456D230);
+    IPearlRouter constant pearlRouter = IPearlRouter(0xcC25C0FD84737F44a7d38649b69491BBf0c7f083); // use value from: https://docs.pearl.exchange/protocol-details/contract-addresses-v1.5
     IRewardPool immutable pearlRewards;
     IVoter constant pearlVoter = IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
     IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
@@ -50,6 +50,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
     uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
+    uint256 public mintRewardsToSell = 30e18; // ~ $9
 
     constructor(
         address _asset,
@@ -85,6 +86,12 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     // Set the amount of PEARL to be locked in Yearn's vePEARL voter from each harvest
     function setKeepPEARL(uint256 _keepPEARL) external onlyManagement {
         keepPEARL = _keepPEARL;
+    }
+
+    /// @notice Set the amount of PEARL to be sold for asset from each harvest
+    /// @param _mintRewardsToSell amount of PEARL to be sold for asset from each harvest
+    function setMintRewardsToSell(uint256 _mintRewardsToSell) external onlyManagement {
+        mintRewardsToSell = _mintRewardsToSell;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -175,13 +182,13 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         returns (uint256 _totalAssets)
     {
         if (!TokenizedStrategy.isShutdown()) {
-                _claimAndSellRewards();
+            _claimAndSellRewards();
 
-                // check if we got someting from selling the loot and deploy it
-                uint256 _balanceOfAsset = balanceOfAsset();
-                if (_balanceOfAsset > 0) {
-                    _deployFunds(_balanceOfAsset);
-                }
+            // check if we got someting from selling the loot and deploy it
+            uint256 _balanceOfAsset = balanceOfAsset();
+            if (_balanceOfAsset > 0) {
+                _deployFunds(_balanceOfAsset);
+            }
         }
         _totalAssets = balanceOfAsset() + balanceOfStakedAssets();
     }
@@ -238,25 +245,45 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         }
     }
 
+    /// @notice Get pending value of rewards in DAI
+    /// @return value of pearl in DAI
+    function getClaimableRewards() external view returns (uint256) {
+        uint256 pendingPearl = pearlRewards.earned(address(this));
+        return _getValueOfPearlInDai(pendingPearl);
+    }
 
-    function _claimAndSellRewards() internal
-    {
-        uint256 pearlBalanceBefore = ERC20(pearl).balanceOf(address(this));
+    /// @notice Get value of rewards in DAI
+    /// @return value of pearl in DAI
+    function getRewawrdsValue() external view returns (uint256) {
+        uint256 pearlBalance = pearl.balanceOf(address(this));
+        return _getValueOfPearlInDai(pearlBalance);
+    }
+
+    function _getValueOfPearlInDai(uint256 _amount) internal view returns (uint256) {
+        IPearlRouter.route[] memory routes = new IPearlRouter.route[](2);
+        routes[0] = IPearlRouter.route(address(pearl), address(usdr), false);
+        routes[1] = IPearlRouter.route(address(usdr), address(DAI), true);
+        uint256[] memory amounts = pearlRouter.getAmountsOut(_amount, routes);
+        return amounts[amounts.length - 1];
+    }
+
+    function _claimAndSellRewards() internal {
+        uint256 pearlBalanceBefore = pearl.balanceOf(address(this));
 
         // claim lp fees
         lpToken.claimFees();
 
         // get PEARL, sell them for asset
         pearlRewards.getReward();
-        uint256 pearlBalance = ERC20(pearl).balanceOf(address(this));
-        console.log("C1. PEARL balance: %s", ERC20(pearl).balanceOf(address(this)));
+        uint256 pearlBalance = pearl.balanceOf(address(this));
+        console.log("C1. PEARL balance: %s", pearl.balanceOf(address(this)));
 
-        if (pearlBalance > 0) {
+        if (pearlBalance > mintRewardsToSell) {
             if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
                 pearl.safeTransfer(TokenizedStrategy.management(), (pearlBalance - pearlBalanceBefore) * keepPEARL / FEE_DENOMINATOR);
             }
 
-            pearlBalance = ERC20(pearl).balanceOf(address(this));
+            pearlBalance = pearl.balanceOf(address(this));
 
             // get lp reserves
             (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) = _getLPReserves();
