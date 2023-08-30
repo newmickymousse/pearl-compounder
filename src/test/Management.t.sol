@@ -9,17 +9,17 @@ contract OperationTest is Setup {
         super.setUp();
     }
 
-    function test_setMintRewardsToSell() public {
+    function test_setMinRewardsToSell() public {
         uint256 minRewardsToSell = 123e17;
 
         // user cannot change maxGasForMatching
         vm.prank(user);
         vm.expectRevert("!Authorized");
-        strategy.setMintRewardsToSell(minRewardsToSell);
+        strategy.setMinRewardsToSell(minRewardsToSell);
 
         // management can change maxGasForMatching
         vm.prank(management);
-        strategy.setMintRewardsToSell(minRewardsToSell);
-        assertEq(strategy.mintRewardsToSell(), minRewardsToSell);
+        strategy.setMinRewardsToSell(minRewardsToSell);
+        assertEq(strategy.minRewardsToSell(), minRewardsToSell);
     }
 }

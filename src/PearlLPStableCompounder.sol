@@ -50,7 +50,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
     uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
-    uint256 public mintRewardsToSell = 30e18; // ~ $9
+    uint256 public minRewardsToSell = 30e18; // ~ $9
 
     constructor(
         address _asset,
@@ -89,9 +89,9 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     }
 
     /// @notice Set the amount of PEARL to be sold for asset from each harvest
-    /// @param _mintRewardsToSell amount of PEARL to be sold for asset from each harvest
-    function setMintRewardsToSell(uint256 _mintRewardsToSell) external onlyManagement {
-        mintRewardsToSell = _mintRewardsToSell;
+    /// @param _minRewardsToSell amount of PEARL to be sold for asset from each harvest
+    function setMinRewardsToSell(uint256 _minRewardsToSell) external onlyManagement {
+        minRewardsToSell = _minRewardsToSell;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -254,7 +254,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
 
     /// @notice Get value of rewards in DAI
     /// @return value of pearl in DAI
-    function getRewawrdsValue() external view returns (uint256) {
+    function getRewardsValue() external view returns (uint256) {
         uint256 pearlBalance = pearl.balanceOf(address(this));
         return _getValueOfPearlInDai(pearlBalance);
     }
@@ -278,7 +278,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
         uint256 pearlBalance = pearl.balanceOf(address(this));
         console.log("C1. PEARL balance: %s", pearl.balanceOf(address(this)));
 
-        if (pearlBalance > mintRewardsToSell) {
+        if (pearlBalance > minRewardsToSell) {
             if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
                 pearl.safeTransfer(TokenizedStrategy.management(), (pearlBalance - pearlBalanceBefore) * keepPEARL / FEE_DENOMINATOR);
             }

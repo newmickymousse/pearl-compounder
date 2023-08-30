@@ -44,7 +44,7 @@ contract OperationTest is Setup {
         uint256 _amount = maxFuzzAmount;
 
         vm.prank(management);
-        strategy.setMintRewardsToSell(type(uint256).max);
+        strategy.setMinRewardsToSell(type(uint256).max);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
