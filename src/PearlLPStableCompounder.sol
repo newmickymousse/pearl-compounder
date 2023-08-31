@@ -35,12 +35,12 @@ import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     using SafeERC20 for ERC20;
 
-    IPair private lpToken;
+    IPair private immutable lpToken;
     IUSDRExchange constant usdrExchange = IUSDRExchange(0x195F7B233947d51F4C3b756ad41a5Ddb34cEBCe0);
     IPearlRouter constant pearlRouter = IPearlRouter(0xcC25C0FD84737F44a7d38649b69491BBf0c7f083); // use value from: https://docs.pearl.exchange/protocol-details/contract-addresses-v1.5
     IRewardPool immutable pearlRewards;
     IVoter constant pearlVoter = IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
-    IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+    IStableSwapPool constant synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
     bool public immutable isStable;
 
     ERC20 public constant usdr = ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
