@@ -4,7 +4,8 @@ pragma solidity 0.8.18;
 import {AprOracleBase} from "@periphery/AprOracle/AprOracleBase.sol";
 
 contract StrategyAprOracle is AprOracleBase {
-    constructor() AprOracleBase("Strategy Apr Oracle Example") {}
+    // @todo set correct governance address as second param
+    constructor() AprOracleBase("Strategy Apr Oracle Example", address(0)) {}
 
     /**
      * @notice Will return the expected Apr of a strategy post a debt change.

@@ -3,19 +3,17 @@ pragma solidity 0.8.18;
 import "forge-std/console.sol";
 
 import {BaseTokenizedStrategy} from "@tokenized-strategy/BaseTokenizedStrategy.sol";
+import {BaseHealthCheck} from "@periphery/HealthCheck/BaseHealthCheck.sol";
+import {CustomStrategyTriggerBase} from "@periphery/ReportTrigger/CustomStrategyTriggerBase.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-import {UniswapV3Swapper} from "@periphery/swappers/UniswapV3Swapper.sol";
 
 import {IPearlRouter} from "./interfaces/PearlFi/IPearlRouter.sol";
 import {IPair} from "./interfaces/PearlFi/IPair.sol";
 import {IRewardPool} from "./interfaces/PearlFi/IRewardPool.sol";
 import {IVoter} from "./interfaces/PearlFi/IVoter.sol";
-
 import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
-
 import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
@@ -34,15 +32,15 @@ import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
 
-contract PearlLPStableCompounder is BaseTokenizedStrategy {
+contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     using SafeERC20 for ERC20;
 
-    IPair private lpToken;
+    IPair private immutable lpToken;
     IUSDRExchange constant usdrExchange = IUSDRExchange(0x195F7B233947d51F4C3b756ad41a5Ddb34cEBCe0);
     IPearlRouter constant pearlRouter = IPearlRouter(0xcC25C0FD84737F44a7d38649b69491BBf0c7f083); // use value from: https://docs.pearl.exchange/protocol-details/contract-addresses-v1.5
     IRewardPool immutable pearlRewards;
     IVoter constant pearlVoter = IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
-    IStableSwapPool synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+    IStableSwapPool constant synapseStablePool = IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
     bool public immutable isStable;
 
     ERC20 public constant usdr = ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
@@ -53,11 +51,12 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippage = 500; // 5% slippage in BPS
+    uint256 public slippageStable = 50; // 0.5% slippage in BPS
 
     constructor(
         address _asset,
         string memory _name
-    ) BaseTokenizedStrategy(_asset, _name) {
+    ) BaseHealthCheck(_asset, _name) {
         lpToken = IPair(_asset);
         address _gauge = pearlVoter.gauges(_asset);
         require(_gauge != address(0), "!gauge");
@@ -101,6 +100,13 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < FEE_DENOMINATOR, "!slippage");
         slippage = _slippage;
+    }
+
+    /// @notice Set slippage for swapping stable to stable
+    /// @param _slippageStable slippage in BPS
+    function setSlippageStable(uint256 _slippageStable) external onlyManagement {
+        require(_slippageStable < FEE_DENOMINATOR, "!slippageStable");
+        slippageStable = _slippageStable;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -214,6 +220,32 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
             }
         }
         _totalAssets = balanceOfAsset() + balanceOfStakedAssets();
+
+        _executeHealthCheck(_totalAssets);
+    }
+
+    /**
+     * @notice Returns wether or not report() should be called by a keeper.
+     * @dev Check if there are idle assets, if the strategy is not shutdown
+     * and if there are any rewards to be claimed.
+     *
+     * @return . Should return true if report() should be called by keeper or false if not.
+     */
+    function reportTrigger(address /*_strategy*/) external view override returns (bool, bytes memory) {
+        // @todo do we need to verify _strategy == address(this)? it cannot harm strategy if we don't check it
+        if (TokenizedStrategy.isShutdown()) return (false, bytes("Shutdown"));
+        // gas cost is not concern here 
+        if (balanceOfAsset() > 0 || balanceOfRewards() > minRewardsToSell) {
+            return (true, abi.encodeWithSelector(TokenizedStrategy.report.selector));
+        }
+
+        return (
+            // Return true is the full profit unlock time has passed since the last report.
+            block.timestamp - TokenizedStrategy.lastReport() >
+                TokenizedStrategy.profitMaxUnlockTime(),
+            // Return the report function sig as the calldata.
+            abi.encodeWithSelector(TokenizedStrategy.report.selector)
+        );
     }
 
     function _getLPReserves() internal view returns (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) {
@@ -260,13 +292,17 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
                     if (_tokenOut != address(DAI)) {
                         uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
                         uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
+                        uint256 minOut = synapseStablePool.calculateSwap(daiId, tokenOutId, daiOut) * (FEE_DENOMINATOR - slippageStable) / FEE_DENOMINATOR;
+                        console.log("SW4a. DAI for token (%s), amount: %d for minOut: %d", ERC20(_tokenOut).symbol(), daiOut, minOut);
                         synapseStablePool.swap(
                             daiId,
                             tokenOutId,
                             daiOut,
-                            0, // @todo: do we need to define minDy for stable?
+                            minOut,
                             block.timestamp
                         );
+                        // balance of token out
+                        console.log("SW5a. token (%s), balance: %d", ERC20(_tokenOut).symbol(), ERC20(_tokenOut).balanceOf(address(this)));
                     }
                 } else {
                     uint256 usdrBalance = usdrOut[1];
@@ -366,40 +402,25 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Optional function for strategist to override that can
-     *  be called in between reports.
-     *
-     * If '_tend' is used tendTrigger() will also need to be overridden.
-     *
-     * This call can only be called by a persionned role so may be
-     * through protected relays.
-     *
-     * This can be used to harvest and compound rewards, deposit idle funds,
-     * perform needed poisition maintence or anything else that doesn't need
-     * a full report for.
-     *
-     *   EX: A strategy that can not deposit funds without getting
-     *       sandwhiched can use the tend when a certain threshold
-     *       of idle to totalAssets has been reached.
-     *
-     * The TokenizedStrategy contract will do all needed debt and idle updates
-     * after this has finished and will have no effect on PPS of the strategy
-     * till report() is called.
+     * @dev Deploy idle funds.
      *
      * @param _totalIdle The current amount of idle funds that are available to deploy.
-     *
-    function _tend(uint256 _totalIdle) internal override {}
-    */
+     */
+    function _tend(uint256 _totalIdle) internal override {
+        _deployFunds(_totalIdle);
+    }
 
     /**
      * @notice Returns wether or not tend() should be called by a keeper.
-     * @dev Optional trigger to override if tend() will be used by the strategy.
-     * This must be implemented if the strategy hopes to invoke _tend().
+     * @dev Check if there idle assets and if the strategy is not shutdown.
      *
-     * @return . Should return true if tend() should be called by keeper or false if not.
-     *
-    function tendTrigger() public view override returns (bool) {}
-    */
+     * @return shouldTend Should return true if tend() should be called by keeper or false if not.
+     */
+    function tendTrigger() public view override returns (bool shouldTend) {
+        if (!TokenizedStrategy.isShutdown() && TokenizedStrategy.totalIdle() > 0) {
+            shouldTend = true;
+        }
+    }
 
     /**
      * @notice Gets the max amount of `asset` that an adress can deposit.
@@ -462,33 +483,10 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     */
 
     /**
-     * @dev Optional function for a strategist to override that will
-     * allow management to manually withdraw deployed funds from the
-     * yield source if a strategy is shutdown.
-     *
-     * This should attempt to free `_amount`, noting that `_amount` may
-     * be more than is currently deployed.
-     *
-     * NOTE: This will not realize any profits or losses. A seperate
-     * {report} will be needed in order to record any profit/loss. If
-     * a report may need to be called after a shutdown it is important
-     * to check if the strategy is shutdown during {_harvestAndReport}
-     * so that it does not simply re-deploy all funds that had been freed.
-     *
-     * EX:
-     *   if(freeAsset > 0 && !TokenizedStrategy.isShutdown()) {
-     *       depositFunds...
-     *    }
-     *
+     * @dev Withdraw funds from gauge
      * @param _amount The amount of asset to attempt to free.
-     *
+     */
     function _emergencyWithdraw(uint256 _amount) internal override {
-        TODO: If desired implement simple logic to free deployed funds.
-
-        EX:
-            _amount = min(_amount, atoken.balanceOf(address(this)));
-            lendingPool.withdraw(asset, _amount);
+        _freeFunds(_amount);
     }
-
-    */
 }

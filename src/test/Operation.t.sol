@@ -124,6 +124,8 @@ contract OperationTest is Setup {
         // airdrop(asset, address(strategy), toAirdrop);
 
         // Report profit
+        (bool shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertTrue(shouldReport);
         vm.prank(keeper);
         (uint256 profit, uint256 loss) = strategy.report();
 
@@ -164,6 +166,38 @@ contract OperationTest is Setup {
             expectedShares,
             "!perf fee out"
         );
+    }
+
+    function test_reportTrigger() public {
+        (bool shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertFalse(shouldReport);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, minFuzzAmount);
+
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertFalse(shouldReport);
+
+        // verify reportTrigger for airdrop asset
+        console.log("airdop asset");
+        deal(address(asset), address(strategy), minFuzzAmount);
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertTrue(shouldReport);
+        vm.prank(keeper);
+        strategy.report();
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertFalse(shouldReport);
+
+        // verify reportTrigger for time from last report
+        console.log("skip time");
+        skip(strategy.profitMaxUnlockTime() + 1 minutes);
+        vm.roll(block.number + 1);
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertTrue(shouldReport);
+        vm.prank(keeper);
+        strategy.report();
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertFalse(shouldReport);
     }
 
     function test_tendTrigger(uint256 _amount) public {
