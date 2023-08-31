@@ -2,7 +2,6 @@
 pragma solidity 0.8.18;
 import "forge-std/console.sol";
 
-
 import {PearlLPStableCompounder} from "./PearlLPStableCompounder.sol";
 
 interface IStrategy {
@@ -14,7 +13,10 @@ interface IStrategy {
 }
 
 contract PearlLPStableCompounderFactory {
-    event NewPearlLPStableCompounder(address indexed strategy, address indexed asset);
+    event NewPearlLPStableCompounder(
+        address indexed strategy,
+        address indexed asset
+    );
 
     address public management;
     address public performanceFeeRecipient;

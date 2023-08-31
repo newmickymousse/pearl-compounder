@@ -8,16 +8,24 @@ interface IPearlRouter {
         bool stable;
     }
 
-    function getAmountsOut(uint256 amountIn, route[] memory routes) external view returns (uint256[] memory amounts);
-    function getAmountOut(uint256 amountIn, address tokenIn, address tokenOut) external view returns (uint256 amount, bool stable);
-  
+    function getAmountsOut(
+        uint256 amountIn,
+        route[] memory routes
+    ) external view returns (uint256[] memory amounts);
+
+    function getAmountOut(
+        uint256 amountIn,
+        address tokenIn,
+        address tokenOut
+    ) external view returns (uint256 amount, bool stable);
+
     function quoteRemoveLiquidity(
         address tokenA,
         address tokenB,
         bool stable,
         uint256 liquidity
     ) external returns (uint256 amountA, uint256 amountB);
-    
+
     function quoteAddLiquidity(
         address tokenA,
         address tokenB,
@@ -57,7 +65,11 @@ interface IPearlRouter {
         uint256 deadline
     ) external returns (uint256[] memory amounts);
 
-    function pairFor(address tokenA, address tokenB, bool stable) external returns (address pair);
+    function pairFor(
+        address tokenA,
+        address tokenB,
+        bool stable
+    ) external returns (address pair);
 
     function swapExactTokensForTokensSimple(
         uint256 amountIn,
@@ -68,5 +80,4 @@ interface IPearlRouter {
         address to,
         uint256 deadline
     ) external returns (uint256[] memory amounts);
-
 }

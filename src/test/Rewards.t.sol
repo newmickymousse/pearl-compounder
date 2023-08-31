@@ -61,7 +61,9 @@ contract OperationTest is Setup {
         (uint256 profit, uint256 loss) = strategy.report();
 
         // didn't sold any rewards
-        uint256 pearlBalance = ERC20(strategy.pearl()).balanceOf(address(strategy));
+        uint256 pearlBalance = ERC20(strategy.pearl()).balanceOf(
+            address(strategy)
+        );
         assertGt(pearlBalance, 0, "!pearlBalance");
 
         // Check return Values

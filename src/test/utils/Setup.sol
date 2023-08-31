@@ -59,7 +59,12 @@ contract Setup is ExtendedTest, IEvents {
         strategyFactory = setUpStrategyFactory();
 
         // Deploy strategy and set variables
-        strategy = IStrategyInterface(strategyFactory.newPearlLPStableCompounder(address(asset), "AMM - USDR/USDT"));
+        strategy = IStrategyInterface(
+            strategyFactory.newPearlLPStableCompounder(
+                address(asset),
+                "AMM - USDR/USDT"
+            )
+        );
         setUpStrategy();
 
         factory = strategy.FACTORY();
@@ -76,8 +81,14 @@ contract Setup is ExtendedTest, IEvents {
 
     function setUpStrategyFactory() public returns (IStrategyFactoryInterface) {
         IStrategyFactoryInterface _factory = IStrategyFactoryInterface(
-            address(new PearlLPStableCompounderFactory(management, performanceFeeRecipient, keeper)
-        ));
+            address(
+                new PearlLPStableCompounderFactory(
+                    management,
+                    performanceFeeRecipient,
+                    keeper
+                )
+            )
+        );
         return _factory;
     }
 
@@ -172,6 +183,8 @@ contract Setup is ExtendedTest, IEvents {
         tokenAddrs["USDT-USDR-lp"] = 0x3f69055F203861abFd5D986dC81a2eFa7c915b0c;
         tokenAddrs["WETH-USDR-lp"] = 0x74c64d1976157E7Aaeeed46EF04705F4424b27eC;
         tokenAddrs["WBTC-USDR-lp"] = 0xb95E1C22dd965FafE926b2A793e9D6757b6613F4;
-        tokenAddrs["WMATIC-USDR-lp"] = 0xB4d852b92148eAA16467295975167e640E1FE57A;
+        tokenAddrs[
+            "WMATIC-USDR-lp"
+        ] = 0xB4d852b92148eAA16467295975167e640E1FE57A;
     }
 }

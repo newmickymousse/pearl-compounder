@@ -14,9 +14,17 @@ interface IVoter {
 
     function emergencyCouncil() external view returns (address);
 
-    function emitDeposit(uint256 _tokenId, address account, uint256 amount) external;
+    function emitDeposit(
+        uint256 _tokenId,
+        address account,
+        uint256 amount
+    ) external;
 
-    function emitWithdraw(uint256 _tokenId, address account, uint256 amount) external;
+    function emitWithdraw(
+        uint256 _tokenId,
+        address account,
+        uint256 amount
+    ) external;
 
     function isWhitelisted(address token) external view returns (bool);
 
@@ -38,9 +46,15 @@ interface IVoter {
 
     function lastVoted(uint256 id) external view returns (uint256);
 
-    function poolVote(uint256 id, uint256 _index) external view returns (address _pair);
+    function poolVote(
+        uint256 id,
+        uint256 _index
+    ) external view returns (address _pair);
 
-    function votes(uint256 id, address _pool) external view returns (uint256 votes);
+    function votes(
+        uint256 id,
+        address _pool
+    ) external view returns (uint256 votes);
 
     function poolVoteLength(uint256 tokenId) external view returns (uint256);
 
