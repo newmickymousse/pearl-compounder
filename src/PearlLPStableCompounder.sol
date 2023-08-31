@@ -471,33 +471,10 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     */
 
     /**
-     * @dev Optional function for a strategist to override that will
-     * allow management to manually withdraw deployed funds from the
-     * yield source if a strategy is shutdown.
-     *
-     * This should attempt to free `_amount`, noting that `_amount` may
-     * be more than is currently deployed.
-     *
-     * NOTE: This will not realize any profits or losses. A seperate
-     * {report} will be needed in order to record any profit/loss. If
-     * a report may need to be called after a shutdown it is important
-     * to check if the strategy is shutdown during {_harvestAndReport}
-     * so that it does not simply re-deploy all funds that had been freed.
-     *
-     * EX:
-     *   if(freeAsset > 0 && !TokenizedStrategy.isShutdown()) {
-     *       depositFunds...
-     *    }
-     *
+     * @dev Withdraw funds from gauge
      * @param _amount The amount of asset to attempt to free.
-     *
+     */
     function _emergencyWithdraw(uint256 _amount) internal override {
-        TODO: If desired implement simple logic to free deployed funds.
-
-        EX:
-            _amount = min(_amount, atoken.balanceOf(address(this)));
-            lendingPool.withdraw(asset, _amount);
+        _freeFunds(_amount);
     }
-
-    */
 }
