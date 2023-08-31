@@ -51,6 +51,7 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippage = 500; // 5% slippage in BPS
+    uint256 public slippageStable = 50; // 0.5% slippage in BPS
 
     constructor(
         address _asset,
@@ -99,6 +100,13 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function setSlippage(uint256 _slippage) external onlyManagement {
         require(_slippage < FEE_DENOMINATOR, "!slippage");
         slippage = _slippage;
+    }
+
+    /// @notice Set slippage for swapping stable to stable
+    /// @param _slippageStable slippage in BPS
+    function setSlippageStable(uint256 _slippageStable) external onlyManagement {
+        require(_slippageStable < FEE_DENOMINATOR, "!slippageStable");
+        slippageStable = _slippageStable;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -284,13 +292,17 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     if (_tokenOut != address(DAI)) {
                         uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
                         uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
+                        uint256 minOut = synapseStablePool.calculateSwap(daiId, tokenOutId, daiOut) * (FEE_DENOMINATOR - slippageStable) / FEE_DENOMINATOR;
+                        console.log("SW4a. DAI for token (%s), amount: %d for minOut: %d", ERC20(_tokenOut).symbol(), daiOut, minOut);
                         synapseStablePool.swap(
                             daiId,
                             tokenOutId,
                             daiOut,
-                            0, // @todo: do we need to define minDy for stable?
+                            minOut,
                             block.timestamp
                         );
+                        // balance of token out
+                        console.log("SW5a. token (%s), balance: %d", ERC20(_tokenOut).symbol(), ERC20(_tokenOut).balanceOf(address(this)));
                     }
                 } else {
                     uint256 usdrBalance = usdrOut[1];
@@ -402,11 +414,11 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      * @notice Returns wether or not tend() should be called by a keeper.
      * @dev Check if there idle assets and if the strategy is not shutdown.
      *
-     * @return . Should return true if tend() should be called by keeper or false if not.
+     * @return shouldTend Should return true if tend() should be called by keeper or false if not.
      */
-    function tendTrigger() public view override returns (bool) {
+    function tendTrigger() public view override returns (bool shouldTend) {
         if (!TokenizedStrategy.isShutdown() && TokenizedStrategy.totalIdle() > 0) {
-            return true;
+            shouldTend = true;
         }
     }
 
