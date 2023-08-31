@@ -170,5 +170,8 @@ contract Setup is ExtendedTest, IEvents {
         tokenAddrs["USDC-USDR-lp"] = 0xD17cb0f162f133e339C0BbFc18c36c357E681D6b;
         tokenAddrs["DAI-USDR-lp"] = 0xBD02973b441Aa83c8EecEA158b98B5984bb1036E;
         tokenAddrs["USDT-USDR-lp"] = 0x3f69055F203861abFd5D986dC81a2eFa7c915b0c;
+        tokenAddrs["WETH-USDR-lp"] = 0x74c64d1976157E7Aaeeed46EF04705F4424b27eC;
+        tokenAddrs["WBTC-USDR-lp"] = 0xb95E1C22dd965FafE926b2A793e9D6757b6613F4;
+        tokenAddrs["WMATIC-USDR-lp"] = 0xB4d852b92148eAA16467295975167e640E1FE57A;
     }
 }
