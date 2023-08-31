@@ -14,4 +14,5 @@ interface IStrategyInterface is IStrategy {
     function pearl() external view returns (address);
     function setSlippage(uint256 _slippage) external;
     function slippage() external view returns (uint256);
+    function reportTrigger(address _strategy) external view returns (bool, bytes memory);
 }

@@ -3,19 +3,17 @@ pragma solidity 0.8.18;
 import "forge-std/console.sol";
 
 import {BaseTokenizedStrategy} from "@tokenized-strategy/BaseTokenizedStrategy.sol";
+import {BaseHealthCheck} from "@periphery/HealthCheck/BaseHealthCheck.sol";
+import {CustomStrategyTriggerBase} from "@periphery/ReportTrigger/CustomStrategyTriggerBase.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-import {UniswapV3Swapper} from "@periphery/swappers/UniswapV3Swapper.sol";
 
 import {IPearlRouter} from "./interfaces/PearlFi/IPearlRouter.sol";
 import {IPair} from "./interfaces/PearlFi/IPair.sol";
 import {IRewardPool} from "./interfaces/PearlFi/IRewardPool.sol";
 import {IVoter} from "./interfaces/PearlFi/IVoter.sol";
-
 import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
-
 import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
@@ -34,7 +32,7 @@ import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
 
-contract PearlLPStableCompounder is BaseTokenizedStrategy {
+contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     using SafeERC20 for ERC20;
 
     IPair private lpToken;
@@ -57,7 +55,7 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     constructor(
         address _asset,
         string memory _name
-    ) BaseTokenizedStrategy(_asset, _name) {
+    ) BaseHealthCheck(_asset, _name) {
         lpToken = IPair(_asset);
         address _gauge = pearlVoter.gauges(_asset);
         require(_gauge != address(0), "!gauge");
@@ -214,6 +212,32 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
             }
         }
         _totalAssets = balanceOfAsset() + balanceOfStakedAssets();
+
+        _executeHealthCheck(_totalAssets);
+    }
+
+    /**
+     * @notice Returns wether or not report() should be called by a keeper.
+     * @dev Check if there are idle assets, if the strategy is not shutdown
+     * and if there are any rewards to be claimed.
+     *
+     * @return . Should return true if report() should be called by keeper or false if not.
+     */
+    function reportTrigger(address /*_strategy*/) external view override returns (bool, bytes memory) {
+        // @todo do we nned to verify _strategy == address(this)?
+        if (TokenizedStrategy.isShutdown()) return (false, bytes("Shutdown"));
+        // gas cost is not concern here 
+        if (balanceOfAsset() > 0 || balanceOfRewards() > minRewardsToSell) {
+            return (true, abi.encodeWithSelector(TokenizedStrategy.report.selector));
+        }
+
+        return (
+            // Return true is the full profit unlock time has passed since the last report.
+            block.timestamp - TokenizedStrategy.lastReport() >
+                TokenizedStrategy.profitMaxUnlockTime(),
+            // Return the report function sig as the calldata.
+            abi.encodeWithSelector(TokenizedStrategy.report.selector)
+        );
     }
 
     function _getLPReserves() internal view returns (address tokenA, address tokenB, uint256 reservesTokenA, uint256 reservesTokenB) {
@@ -366,40 +390,25 @@ contract PearlLPStableCompounder is BaseTokenizedStrategy {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @dev Optional function for strategist to override that can
-     *  be called in between reports.
-     *
-     * If '_tend' is used tendTrigger() will also need to be overridden.
-     *
-     * This call can only be called by a persionned role so may be
-     * through protected relays.
-     *
-     * This can be used to harvest and compound rewards, deposit idle funds,
-     * perform needed poisition maintence or anything else that doesn't need
-     * a full report for.
-     *
-     *   EX: A strategy that can not deposit funds without getting
-     *       sandwhiched can use the tend when a certain threshold
-     *       of idle to totalAssets has been reached.
-     *
-     * The TokenizedStrategy contract will do all needed debt and idle updates
-     * after this has finished and will have no effect on PPS of the strategy
-     * till report() is called.
+     * @dev Deploy idle funds.
      *
      * @param _totalIdle The current amount of idle funds that are available to deploy.
-     *
-    function _tend(uint256 _totalIdle) internal override {}
-    */
+     */
+    function _tend(uint256 _totalIdle) internal override {
+        _deployFunds(_totalIdle);
+    }
 
     /**
      * @notice Returns wether or not tend() should be called by a keeper.
-     * @dev Optional trigger to override if tend() will be used by the strategy.
-     * This must be implemented if the strategy hopes to invoke _tend().
+     * @dev Check if there idle assets and if the strategy is not shutdown.
      *
      * @return . Should return true if tend() should be called by keeper or false if not.
-     *
-    function tendTrigger() public view override returns (bool) {}
-    */
+     */
+    function tendTrigger() public view override returns (bool) {
+        if (!TokenizedStrategy.isShutdown() && TokenizedStrategy.totalIdle() > 0) {
+            return true;
+        }
+    }
 
     /**
      * @notice Gets the max amount of `asset` that an adress can deposit.
