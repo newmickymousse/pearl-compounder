@@ -273,7 +273,6 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function reportTrigger(
         address /*_strategy*/
     ) external view override returns (bool, bytes memory) {
-        // @todo do we need to verify _strategy == address(this)? it cannot harm strategy if we don't check it
         if (TokenizedStrategy.isShutdown()) return (false, bytes("Shutdown"));
         // gas cost is not concern here
         if (balanceOfAsset() > 0 || balanceOfRewards() > minRewardsToSell) {
