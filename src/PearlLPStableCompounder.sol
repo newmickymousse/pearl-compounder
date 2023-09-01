@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
 
-import {BaseTokenizedStrategy} from "@tokenized-strategy/BaseTokenizedStrategy.sol";
 import {BaseHealthCheck} from "@periphery/HealthCheck/BaseHealthCheck.sol";
 import {CustomStrategyTriggerBase} from "@periphery/ReportTrigger/CustomStrategyTriggerBase.sol";
 
@@ -14,9 +13,6 @@ import {IRewardPool} from "./interfaces/PearlFi/IRewardPool.sol";
 import {IVoter} from "./interfaces/PearlFi/IVoter.sol";
 import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
 import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
-
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
 
 /**
  * The `TokenizedStrategy` variable can be used to retrieve the strategies
@@ -42,6 +38,11 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
     IStableSwapPool constant synapseStablePool =
         IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+
+    // Review: All these immutable variables look like they can be set in the
+    // constructor, made private immutable.
+    // You can always emit an event in the constructor, something like:
+    // PearlCompounderCreated(lpToken, isStable, rewards)
     IRewardPool immutable pearlRewards;
     IPair private immutable lpToken;
     bool public immutable isStable;
@@ -54,7 +55,7 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
 
     uint256 public constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
-    uint256 public keepPEARL = 0; // the percentage of PEARL we re-lock for boost (in basis points)
+    uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippage = 500; // 5% slippage in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
@@ -68,7 +69,8 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         require(_gauge != address(0), "!gauge");
         pearlRewards = IRewardPool(_gauge);
 
-        // ERC20(asset).safeApprove(address(router), type(uint256).max);
+        // Review, no need to safeIncreaseAllowance in a constructor
+        // just call the default version, specially since you are doing max int
         ERC20(asset).safeIncreaseAllowance(
             address(pearlRewards),
             type(uint256).max
@@ -164,6 +166,8 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function _deployFunds(uint256 _amount) internal override {
         uint256 balanceOfLp = balanceOfAsset();
 
+        // Review: when balance is going to be greater than amount?
+        // Is the ternary logic actually needed?
         pearlRewards.deposit(_amount > balanceOfLp ? balanceOfLp : _amount);
     }
 
@@ -178,6 +182,11 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function balanceOfRewards() public view returns (uint256) {
         return pearl.balanceOf(address(this));
     }
+
+
+    // Review `getClaimableRewards` and `getRewardsValue()` are both
+    // helper methods not used inside the strategy.
+    // Why don't you make `_getValueOfPearlInDai` external and remove these two?
 
     /// @notice Get pending value of rewards in DAI
     /// @return value of pearl in DAI
@@ -216,7 +225,10 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      */
     function _freeFunds(uint256 _amount) internal override {
         uint256 balanceOfStakedLp = balanceOfStakedAssets();
-
+        // Review: ok, here there is a disconnection with the deposit.
+        // If in the deposit there might be more balance in the contract
+        // than the amount to deposit, here needs to be checked how much is
+        // loose before withdrawing.
         pearlRewards.withdraw(
             _amount > balanceOfStakedLp ? balanceOfStakedLp : _amount
         );
@@ -432,7 +444,11 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         lpToken.claimFees();
 
         // get PEARL, sell them for asset
+        // Review: don't you want to check if rewards > 0 or at least if rewards
+        // accumulated are greater than minRewardsToSell
+        // I would also add an external way to call claimFees() and getReward()
         pearlRewards.getReward();
+
         uint256 pearlBalance = pearl.balanceOf(address(this));
         if (pearlBalance > minRewardsToSell) {
             if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
@@ -472,9 +488,12 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             }
 
             // build lp
+            // Review, I would honestly remove this check. if there is 0 tokenA
+            // and 0 tokenB, then there was a problem with the swap.
+            // let it revert
             if (
                 ERC20(tokenA).balanceOf(address(this)) > 0 &&
-                ERC20(tokenA).balanceOf(address(this)) > 0
+                ERC20(tokenB).balanceOf(address(this)) > 0
             ) {
                 pearlRouter.addLiquidity(
                     tokenA,
@@ -525,4 +544,7 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function _emergencyWithdraw(uint256 _amount) internal override {
         _freeFunds(_amount);
     }
+
+
+    // Review: don't you want to add a sweep, just in case?
 }

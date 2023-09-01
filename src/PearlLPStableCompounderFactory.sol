@@ -4,6 +4,7 @@ import "forge-std/console.sol";
 
 import {PearlLPStableCompounder} from "./PearlLPStableCompounder.sol";
 
+// Review: you have an interfaces folder. Move this there.
 interface IStrategy {
     function setPerformanceFeeRecipient(address) external;
 
@@ -45,7 +46,6 @@ contract PearlLPStableCompounderFactory {
     ) external returns (address) {
         // We need to use the custom interface with the
         // tokenized strategies available setters.
-        console.log("asset creation strategy: %s", _asset);
         IStrategy newStrategy = IStrategy(
             address(new PearlLPStableCompounder(_asset, _name))
         );
@@ -66,6 +66,8 @@ contract PearlLPStableCompounderFactory {
         address _keeper
     ) external {
         require(msg.sender == management, "!management");
+        // Review: without pending mgmt you might brick the factory.
+        // if it happens the only issue is redeploying, right?
         management = _management;
         performanceFeeRecipient = _perfomanceFeeRecipient;
         keeper = _keeper;
