@@ -39,13 +39,9 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     IStableSwapPool constant synapseStablePool =
         IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
 
-    // Review: All these immutable variables look like they can be set in the
-    // constructor, made private immutable.
-    // You can always emit an event in the constructor, something like:
-    // PearlCompounderCreated(lpToken, isStable, rewards)
-    IRewardPool immutable pearlRewards;
+    IRewardPool private immutable pearlRewards;
     IPair private immutable lpToken;
-    bool public immutable isStable;
+    bool private immutable isStable;
 
     ERC20 public constant usdr =
         ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
@@ -60,6 +56,12 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public slippage = 500; // 5% slippage in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
 
+    event PearlCompounderCreated(
+        address indexed lpToken,
+        bool isStable,
+        address rewards
+    );
+
     constructor(
         address _asset,
         string memory _name
@@ -69,54 +71,39 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         require(_gauge != address(0), "!gauge");
         pearlRewards = IRewardPool(_gauge);
 
-        // Review, no need to safeIncreaseAllowance in a constructor
-        // just call the default version, specially since you are doing max int
-        ERC20(asset).safeIncreaseAllowance(
-            address(pearlRewards),
-            type(uint256).max
-        );
-        ERC20(lpToken.token0()).safeIncreaseAllowance(
+        ERC20(asset).approve(address(pearlRewards), type(uint256).max);
+        ERC20(lpToken.token0()).approve(
             address(pearlRouter),
             type(uint256).max
         );
-        ERC20(lpToken.token1()).safeIncreaseAllowance(
+        ERC20(lpToken.token1()).approve(
             address(pearlRouter),
             type(uint256).max
         );
 
-        ERC20(usdr).safeIncreaseAllowance(
-            address(usdrExchange),
-            type(uint256).max
-        );
-        ERC20(pearl).safeIncreaseAllowance(
-            address(pearlRouter),
-            type(uint256).max
-        );
+        ERC20(usdr).approve(address(usdrExchange), type(uint256).max);
+        ERC20(pearl).approve(address(pearlRouter), type(uint256).max);
 
         isStable = lpToken.stable();
         if (isStable) {
             // approve synapse pool for stables only
-            ERC20(DAI).safeIncreaseAllowance(
-                address(usdrExchange),
-                type(uint256).max
-            );
-            ERC20(DAI).safeIncreaseAllowance(
-                address(synapseStablePool),
-                type(uint256).max
-            );
+            ERC20(DAI).approve(address(usdrExchange), type(uint256).max);
+            ERC20(DAI).approve(address(synapseStablePool), type(uint256).max);
             if (lpToken.token0() != address(DAI)) {
-                ERC20(lpToken.token0()).safeIncreaseAllowance(
+                ERC20(lpToken.token0()).approve(
                     address(synapseStablePool),
                     type(uint256).max
                 );
             }
             if (lpToken.token1() != address(DAI)) {
-                ERC20(lpToken.token1()).safeIncreaseAllowance(
+                ERC20(lpToken.token1()).approve(
                     address(synapseStablePool),
                     type(uint256).max
                 );
             }
         }
+
+        emit PearlCompounderCreated(_asset, isStable, _gauge);
     }
 
     // Set the amount of PEARL to be locked in Yearn's vePEARL voter from each harvest
@@ -164,11 +151,7 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      * to deposit in the yield source.
      */
     function _deployFunds(uint256 _amount) internal override {
-        uint256 balanceOfLp = balanceOfAsset();
-
-        // Review: when balance is going to be greater than amount?
-        // Is the ternary logic actually needed?
-        pearlRewards.deposit(_amount > balanceOfLp ? balanceOfLp : _amount);
+        pearlRewards.deposit(_amount);
     }
 
     function balanceOfAsset() public view returns (uint256) {
@@ -182,11 +165,6 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function balanceOfRewards() public view returns (uint256) {
         return pearl.balanceOf(address(this));
     }
-
-
-    // Review `getClaimableRewards` and `getRewardsValue()` are both
-    // helper methods not used inside the strategy.
-    // Why don't you make `_getValueOfPearlInDai` external and remove these two?
 
     /// @notice Get pending value of rewards in DAI
     /// @return value of pearl in DAI
@@ -224,14 +202,18 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        uint256 balanceOfStakedLp = balanceOfStakedAssets();
-        // Review: ok, here there is a disconnection with the deposit.
-        // If in the deposit there might be more balance in the contract
-        // than the amount to deposit, here needs to be checked how much is
-        // loose before withdrawing.
-        pearlRewards.withdraw(
-            _amount > balanceOfStakedLp ? balanceOfStakedLp : _amount
-        );
+        pearlRewards.withdraw(_amount);
+    }
+
+    /**
+     * @notice Gets the max amount of `asset` that can be withdrawn.
+     * @param . The address that is withdrawing from the strategy.
+     * @return . The avialable amount that can be withdrawn in terms of `asset`
+     */
+    function availableWithdrawLimit(
+        address //_owner
+    ) public view override returns (uint256) {
+        return balanceOfStakedAssets() + TokenizedStrategy.totalIdle();
     }
 
     /**
@@ -262,8 +244,13 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         returns (uint256 _totalAssets)
     {
         if (!TokenizedStrategy.isShutdown()) {
-            _claimAndSellRewards();
+            // claim lp fees
+            lpToken.claimFees();
 
+            // check if we have enough rewards pending to sell
+            if (pearlRewards.earned(address(this)) > minRewardsToSell) {
+                _claimAndSellRewards();
+            }
             // check if we got someting from selling the loot and deploy it
             uint256 _balanceOfAsset = balanceOfAsset();
             if (_balanceOfAsset > 0) {
@@ -439,17 +426,9 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     function _claimAndSellRewards() internal {
         uint256 pearlBalanceBefore = pearl.balanceOf(address(this));
-
-        // claim lp fees
-        lpToken.claimFees();
-
-        // get PEARL, sell them for asset
-        // Review: don't you want to check if rewards > 0 or at least if rewards
-        // accumulated are greater than minRewardsToSell
-        // I would also add an external way to call claimFees() and getReward()
         pearlRewards.getReward();
-
         uint256 pearlBalance = pearl.balanceOf(address(this));
+
         if (pearlBalance > minRewardsToSell) {
             if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
                 pearl.safeTransfer(
@@ -488,26 +467,26 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             }
 
             // build lp
-            // Review, I would honestly remove this check. if there is 0 tokenA
-            // and 0 tokenB, then there was a problem with the swap.
-            // let it revert
-            if (
-                ERC20(tokenA).balanceOf(address(this)) > 0 &&
-                ERC20(tokenB).balanceOf(address(this)) > 0
-            ) {
-                pearlRouter.addLiquidity(
-                    tokenA,
-                    tokenB,
-                    isStable,
-                    ERC20(tokenA).balanceOf(address(this)),
-                    ERC20(tokenB).balanceOf(address(this)),
-                    1,
-                    1,
-                    address(this),
-                    block.timestamp
-                );
-            }
+            pearlRouter.addLiquidity(
+                tokenA,
+                tokenB,
+                isStable,
+                ERC20(tokenA).balanceOf(address(this)),
+                ERC20(tokenB).balanceOf(address(this)),
+                1,
+                1,
+                address(this),
+                block.timestamp
+            );
         }
+    }
+
+    function claimFees() external onlyManagement {
+        lpToken.claimFees();
+    }
+
+    function claimAndSellRewards() external onlyManagement {
+        _claimAndSellRewards();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -542,9 +521,23 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      * @param _amount The amount of asset to attempt to free.
      */
     function _emergencyWithdraw(uint256 _amount) internal override {
-        _freeFunds(_amount);
+        uint256 balanceOfStakedLp = balanceOfStakedAssets();
+        // avoid possible reverts
+        pearlRewards.withdraw(
+            _amount > balanceOfStakedLp ? balanceOfStakedLp : _amount
+        );
     }
 
-
-    // Review: don't you want to add a sweep, just in case?
+    /// @notice Sweep all ERC20 tokens to the management
+    /// @dev Cannot sweep the tokenized asset or pearl
+    /// @param _token The ERC20 token to sweep
+    function sweep(address _token) external onlyManagement {
+        require(_token != asset, "!asset");
+        require(_token != address(pearl), "!pearl");
+        ERC20 token = ERC20(_token);
+        token.safeTransfer(
+            TokenizedStrategy.management(),
+            token.balanceOf(address(this))
+        );
+    }
 }

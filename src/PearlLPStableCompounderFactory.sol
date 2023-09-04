@@ -1,17 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
-import "forge-std/console.sol";
 
 import {PearlLPStableCompounder} from "./PearlLPStableCompounder.sol";
-
-// Review: you have an interfaces folder. Move this there.
-interface IStrategy {
-    function setPerformanceFeeRecipient(address) external;
-
-    function setKeeper(address) external;
-
-    function setPendingManagement(address) external;
-}
+import {IStrategy} from "./interfaces/IStrategyInterface.sol";
 
 contract PearlLPStableCompounderFactory {
     event NewPearlLPStableCompounder(

@@ -60,11 +60,15 @@ contract OperationTest is Setup {
         vm.prank(keeper);
         (uint256 profit, uint256 loss) = strategy.report();
 
-        // didn't sold any rewards
+        // there are pedning rewards
+        uint256 claimableRewards = strategy.getClaimableRewards();
+        assertGt(claimableRewards, 0, "!claimableRewards");
+
+        // didn't claim any rewards
         uint256 pearlBalance = ERC20(strategy.pearl()).balanceOf(
             address(strategy)
         );
-        assertGt(pearlBalance, 0, "!pearlBalance");
+        assertEq(pearlBalance, 0, "!pearlBalance");
 
         // Check return Values
         assertGe(profit, 0, "!profit");

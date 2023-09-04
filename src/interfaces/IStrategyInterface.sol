@@ -27,4 +27,10 @@ interface IStrategyInterface is IStrategy {
     function reportTrigger(
         address _strategy
     ) external view returns (bool, bytes memory);
+
+    function sweep(address _token) external;
+
+    function claimAndSellRewards() external;
+
+    function claimFees() external;
 }
