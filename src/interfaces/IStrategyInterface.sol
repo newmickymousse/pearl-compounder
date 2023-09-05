@@ -14,12 +14,6 @@ interface IStrategyInterface is IStrategy {
 
     function getRewardsValue() external view returns (uint256);
 
-    function pearl() external view returns (address);
-
-    function setSlippage(uint256 _slippage) external;
-
-    function slippage() external view returns (uint256);
-
     function setSlippageStable(uint256 _slippageStable) external;
 
     function slippageStable() external view returns (uint256);

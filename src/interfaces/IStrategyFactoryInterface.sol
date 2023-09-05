@@ -2,7 +2,7 @@
 pragma solidity 0.8.18;
 
 interface IStrategyFactoryInterface {
-    function newPearlLPStableCompounder(
+    function newPearlLPCompounder(
         address _asset,
         string memory _name
     ) external returns (address);

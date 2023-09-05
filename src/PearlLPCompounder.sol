@@ -27,33 +27,33 @@ import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 
 // NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
 
-contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
+contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     using SafeERC20 for ERC20;
 
-    IUSDRExchange constant usdrExchange =
+    IUSDRExchange private constant usdrExchange =
         IUSDRExchange(0x195F7B233947d51F4C3b756ad41a5Ddb34cEBCe0);
-    IPearlRouter constant pearlRouter =
+    IPearlRouter private constant pearlRouter =
         IPearlRouter(0xcC25C0FD84737F44a7d38649b69491BBf0c7f083); // use value from: https://docs.pearl.exchange/protocol-details/contract-addresses-v1.5
-    IVoter constant pearlVoter =
+    IVoter private constant pearlVoter =
         IVoter(0xa26C2A6BfeC5512c13Ae9EacF41Cb4319d30cCF0);
-    IStableSwapPool constant synapseStablePool =
+    IStableSwapPool private constant synapseStablePool =
         IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
 
     IRewardPool private immutable pearlRewards;
     IPair private immutable lpToken;
     bool private immutable isStable;
 
-    ERC20 public constant usdr =
+    ERC20 private constant usdr =
         ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
-    ERC20 public constant pearl =
+    ERC20 private constant pearl =
         ERC20(0x7238390d5f6F64e67c3211C343A410E2A3DEc142);
-    ERC20 public constant DAI =
+    ERC20 private constant DAI =
         ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
 
-    uint256 public constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
+    uint256 private constant USDR_DAI_PRECISION = 1e9;
+    uint256 private constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
-    uint256 public slippage = 500; // 5% slippage in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
 
     event PearlCompounderCreated(
@@ -71,32 +71,31 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         require(_gauge != address(0), "!gauge");
         pearlRewards = IRewardPool(_gauge);
 
-        ERC20(asset).approve(address(pearlRewards), type(uint256).max);
-        ERC20(lpToken.token0()).approve(
+        ERC20(asset).safeApprove(address(pearlRewards), type(uint256).max);
+        ERC20(lpToken.token0()).safeApprove(
             address(pearlRouter),
             type(uint256).max
         );
-        ERC20(lpToken.token1()).approve(
+        ERC20(lpToken.token1()).safeApprove(
             address(pearlRouter),
             type(uint256).max
         );
 
-        ERC20(usdr).approve(address(usdrExchange), type(uint256).max);
-        ERC20(pearl).approve(address(pearlRouter), type(uint256).max);
+        ERC20(usdr).safeApprove(address(usdrExchange), type(uint256).max);
+        ERC20(pearl).safeApprove(address(pearlRouter), type(uint256).max);
 
         isStable = lpToken.stable();
         if (isStable) {
             // approve synapse pool for stables only
-            ERC20(DAI).approve(address(usdrExchange), type(uint256).max);
-            ERC20(DAI).approve(address(synapseStablePool), type(uint256).max);
+            ERC20(DAI).safeApprove(address(synapseStablePool), type(uint256).max);
             if (lpToken.token0() != address(DAI)) {
-                ERC20(lpToken.token0()).approve(
+                ERC20(lpToken.token0()).safeApprove(
                     address(synapseStablePool),
                     type(uint256).max
                 );
             }
             if (lpToken.token1() != address(DAI)) {
-                ERC20(lpToken.token1()).approve(
+                ERC20(lpToken.token1()).safeApprove(
                     address(synapseStablePool),
                     type(uint256).max
                 );
@@ -117,13 +116,6 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         uint256 _minRewardsToSell
     ) external onlyManagement {
         minRewardsToSell = _minRewardsToSell;
-    }
-
-    /// @notice Set the slippage for selling PEARL to volatile token in asset
-    /// @param _slippage slippage in BPS
-    function setSlippage(uint256 _slippage) external onlyManagement {
-        require(_slippage < FEE_DENOMINATOR, "!slippage");
-        slippage = _slippage;
     }
 
     /// @notice Set slippage for swapping stable to stable
@@ -309,8 +301,11 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address token,
         uint256 _amount
     ) internal view returns (uint256 amountInDAI) {
-        if (token == address(DAI) || token == address(usdr)) {
+        if (token == address(DAI)) {
             return _amount;
+        }
+        if (token == address(usdr)) {
+            return _amount * USDR_DAI_PRECISION;
         }
 
         if (isStable) {
@@ -328,20 +323,16 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                 token,
                 address(usdr)
             );
+            amountInDAI = amountInDAI * USDR_DAI_PRECISION;
         }
     }
 
     function _swapPearlForToken(address _tokenOut, uint256 _amountIn) internal {
         if (_tokenOut != address(pearl) && _amountIn > 0) {
-            uint256 minAmountOut = _getMinAmountOut(
-                address(pearl),
-                address(usdr),
-                _amountIn
-            );
             uint256[] memory usdrOut = pearlRouter
                 .swapExactTokensForTokensSimple(
                     _amountIn,
-                    minAmountOut,
+                    0,
                     address(pearl),
                     address(usdr),
                     false,
@@ -352,42 +343,12 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             if (_tokenOut != address(usdr)) {
                 //if we need anything but USDR, let's withdraw from tangible to get DAI first
                 if (isStable) {
-                    uint256 daiOut = usdrExchange.swapToUnderlying(
-                        usdrOut[1],
-                        address(this)
-                    );
-
-                    if (_tokenOut != address(DAI)) {
-                        uint8 daiId = synapseStablePool.getTokenIndex(
-                            address(DAI)
-                        );
-                        uint8 tokenOutId = synapseStablePool.getTokenIndex(
-                            _tokenOut
-                        );
-                        uint256 minOut = (synapseStablePool.calculateSwap(
-                            daiId,
-                            tokenOutId,
-                            daiOut
-                        ) * (FEE_DENOMINATOR - slippageStable)) /
-                            FEE_DENOMINATOR;
-                        synapseStablePool.swap(
-                            daiId,
-                            tokenOutId,
-                            daiOut,
-                            minOut,
-                            block.timestamp
-                        );
-                    }
+                    _swapStable(_tokenOut, usdrOut[1]);
                 } else {
                     uint256 usdrBalance = usdrOut[1];
-                    minAmountOut = _getMinAmountOut(
-                        address(usdr),
-                        _tokenOut,
-                        usdrBalance
-                    );
                     pearlRouter.swapExactTokensForTokensSimple(
                         usdrBalance,
-                        minAmountOut,
+                        0,
                         address(usdr),
                         _tokenOut,
                         false,
@@ -399,19 +360,38 @@ contract PearlLPStableCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         }
     }
 
-    function _getMinAmountOut(
-        address _tokenIn,
-        address _tokenOut,
-        uint256 _amountIn
-    ) internal view returns (uint256 minAmountOut) {
-        (minAmountOut, ) = pearlRouter.getAmountOut(
-            _amountIn,
-            _tokenIn,
-            _tokenOut
+    function _swapStable(address _tokenOut, uint256 _usdrAmount) internal {
+
+        // @todo point 11. from schlag
+        uint256 daiOut = usdrExchange.swapToUnderlying(
+            _usdrAmount,
+            address(this)
         );
-        minAmountOut =
-            (minAmountOut * (FEE_DENOMINATOR - slippage)) /
-            FEE_DENOMINATOR;
+
+        if (_tokenOut != address(DAI)) {
+            uint8 daiId = synapseStablePool.getTokenIndex(
+                address(DAI)
+            );
+            uint8 tokenOutId = synapseStablePool.getTokenIndex(
+                _tokenOut
+            );
+            uint256 minAmountOut = daiOut * (FEE_DENOMINATOR - slippageStable) /
+                FEE_DENOMINATOR;
+            
+            // remove decimals if needed
+            uint256 tokenOutDecimals = ERC20(_tokenOut).decimals();
+            if (tokenOutDecimals < 18) {
+                minAmountOut = minAmountOut / 10 **
+                    (18 - tokenOutDecimals);
+            }
+            synapseStablePool.swap(
+                daiId,
+                tokenOutId,
+                daiOut,
+                minAmountOut,
+                block.timestamp
+            );
+        }
     }
 
     function _getValueOfPearlInDai(

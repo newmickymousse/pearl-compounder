@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
 
-import {PearlLPStableCompounder} from "./PearlLPStableCompounder.sol";
+import {PearlLPCompounder} from "./PearlLPCompounder.sol";
 import {IStrategy} from "./interfaces/IStrategyInterface.sol";
 
-contract PearlLPStableCompounderFactory {
-    event NewPearlLPStableCompounder(
+contract PearlLPCompounderFactory {
+    event NewPearlLPCompounder(
         address indexed strategy,
         address indexed asset
     );
@@ -31,14 +31,14 @@ contract PearlLPStableCompounderFactory {
      * @param _name The name for the lender to use.
      * @return . The address of the new lender.
      */
-    function newPearlLPStableCompounder(
+    function newPearlLPCompounder(
         address _asset,
         string memory _name
     ) external returns (address) {
         // We need to use the custom interface with the
         // tokenized strategies available setters.
         IStrategy newStrategy = IStrategy(
-            address(new PearlLPStableCompounder(_asset, _name))
+            address(new PearlLPCompounder(_asset, _name))
         );
 
         newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -47,7 +47,7 @@ contract PearlLPStableCompounderFactory {
 
         newStrategy.setPendingManagement(management);
 
-        emit NewPearlLPStableCompounder(address(newStrategy), _asset);
+        emit NewPearlLPCompounder(address(newStrategy), _asset);
         return address(newStrategy);
     }
 
@@ -57,8 +57,6 @@ contract PearlLPStableCompounderFactory {
         address _keeper
     ) external {
         require(msg.sender == management, "!management");
-        // Review: without pending mgmt you might brick the factory.
-        // if it happens the only issue is redeploying, right?
         management = _management;
         performanceFeeRecipient = _perfomanceFeeRecipient;
         keeper = _keeper;

@@ -6,8 +6,8 @@ import {ExtendedTest} from "./ExtendedTest.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {PearlLPStableCompounderFactory} from "../../PearlLPStableCompounderFactory.sol";
-import {PearlLPStableCompounder} from "../../PearlLPStableCompounder.sol";
+import {PearlLPCompounderFactory} from "../../PearlLPCompounderFactory.sol";
+import {PearlLPCompounder} from "../../PearlLPCompounder.sol";
 import {IStrategyFactoryInterface} from "../../interfaces/IStrategyFactoryInterface.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
@@ -60,7 +60,7 @@ contract Setup is ExtendedTest, IEvents {
 
         // Deploy strategy and set variables
         strategy = IStrategyInterface(
-            strategyFactory.newPearlLPStableCompounder(
+            strategyFactory.newPearlLPCompounder(
                 address(asset),
                 "AMM - USDR/USDT"
             )
@@ -82,7 +82,7 @@ contract Setup is ExtendedTest, IEvents {
     function setUpStrategyFactory() public returns (IStrategyFactoryInterface) {
         IStrategyFactoryInterface _factory = IStrategyFactoryInterface(
             address(
-                new PearlLPStableCompounderFactory(
+                new PearlLPCompounderFactory(
                     management,
                     performanceFeeRecipient,
                     keeper
@@ -171,13 +171,13 @@ contract Setup is ExtendedTest, IEvents {
     }
 
     function _setTokenAddrs() internal {
-        tokenAddrs["WBTC"] = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
-        tokenAddrs["YFI"] = 0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e;
-        tokenAddrs["WETH"] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-        tokenAddrs["LINK"] = 0x514910771AF9Ca656af840dff83E8264EcF986CA;
-        tokenAddrs["USDT"] = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
-        tokenAddrs["DAI"] = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-        tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        tokenAddrs["WBTC"] = 0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6;
+        tokenAddrs["WETH"] = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619;
+        tokenAddrs["USDT"] = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
+        tokenAddrs["DAI"] = 0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063;
+        tokenAddrs["USDC"] = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+        tokenAddrs["USDR"] = 0x40379a439D4F6795B6fc9aa5687dB461677A2dBa;
+        tokenAddrs["PEARL"] = 0x7238390d5f6F64e67c3211C343A410E2A3DEc142;
         tokenAddrs["USDC-USDR-lp"] = 0xD17cb0f162f133e339C0BbFc18c36c357E681D6b;
         tokenAddrs["DAI-USDR-lp"] = 0xBD02973b441Aa83c8EecEA158b98B5984bb1036E;
         tokenAddrs["USDT-USDR-lp"] = 0x3f69055F203861abFd5D986dC81a2eFa7c915b0c;

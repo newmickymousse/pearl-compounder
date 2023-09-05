@@ -65,7 +65,8 @@ contract OperationTest is Setup {
         assertGt(claimableRewards, 0, "!claimableRewards");
 
         // didn't claim any rewards
-        uint256 pearlBalance = ERC20(strategy.pearl()).balanceOf(
+
+        uint256 pearlBalance = ERC20(tokenAddrs["PEARL"]).balanceOf(
             address(strategy)
         );
         assertEq(pearlBalance, 0, "!pearlBalance");
