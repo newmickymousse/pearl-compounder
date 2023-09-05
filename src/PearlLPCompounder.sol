@@ -238,7 +238,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             lpToken.claimFees();
 
             // check if we have enough rewards pending to sell
-            if (pearlRewards.earned(address(this)) > minRewardsToSell) {
+            if (
+                pearlRewards.earned(address(this)) + balanceOfRewards() >
+                minRewardsToSell
+            ) {
                 _claimAndSellRewards();
             }
             // check if we got someting from selling the loot and deploy it
@@ -264,7 +267,11 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) external view override returns (bool, bytes memory) {
         if (TokenizedStrategy.isShutdown()) return (false, bytes("Shutdown"));
         // gas cost is not concern here
-        if (balanceOfAsset() > 0 || balanceOfRewards() > minRewardsToSell) {
+        if (
+            balanceOfAsset() > 0 ||
+            pearlRewards.earned(address(this)) + balanceOfRewards() >
+            minRewardsToSell
+        ) {
             return (
                 true,
                 abi.encodeWithSelector(TokenizedStrategy.report.selector)

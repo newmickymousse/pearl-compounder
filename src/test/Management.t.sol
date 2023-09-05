@@ -43,8 +43,6 @@ contract OperationTest is Setup {
     }
 
     function test_calimFees() public {
-        uint256 minRewardsToSell = 123e17;
-
         // user cannot claimFees
         vm.prank(user);
         vm.expectRevert("!Authorized");
