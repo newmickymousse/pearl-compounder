@@ -2,13 +2,10 @@
 pragma solidity 0.8.18;
 
 import {PearlLPCompounder} from "./PearlLPCompounder.sol";
-import {IStrategy} from "./interfaces/IStrategyInterface.sol";
+import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
 contract PearlLPCompounderFactory {
-    event NewPearlLPCompounder(
-        address indexed strategy,
-        address indexed asset
-    );
+    event NewPearlLPCompounder(address indexed strategy, address indexed asset);
 
     address public management;
     address public performanceFeeRecipient;
@@ -37,7 +34,7 @@ contract PearlLPCompounderFactory {
     ) external returns (address) {
         // We need to use the custom interface with the
         // tokenized strategies available setters.
-        IStrategy newStrategy = IStrategy(
+        IStrategyInterface newStrategy = IStrategyInterface(
             address(new PearlLPCompounder(_asset, _name))
         );
 
@@ -46,6 +43,8 @@ contract PearlLPCompounderFactory {
         newStrategy.setKeeper(keeper);
 
         newStrategy.setPendingManagement(management);
+
+        newStrategy.setKeepPEARL(0, management);
 
         emit NewPearlLPCompounder(address(newStrategy), _asset);
         return address(newStrategy);

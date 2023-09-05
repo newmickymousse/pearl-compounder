@@ -50,11 +50,13 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ERC20 private constant DAI =
         ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
 
-    uint256 private constant USDR_DAI_PRECISION = 1e9;
+    uint256 private constant USDR_TO_DAI_PRECISION = 1e9;
     uint256 private constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
+    /// @notice The address of PEARL voter. This is where we send any keepPEARL.
+    address public voter;
 
     event PearlCompounderCreated(
         address indexed lpToken,
@@ -87,7 +89,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         isStable = lpToken.stable();
         if (isStable) {
             // approve synapse pool for stables only
-            ERC20(DAI).safeApprove(address(synapseStablePool), type(uint256).max);
+            ERC20(DAI).safeApprove(
+                address(synapseStablePool),
+                type(uint256).max
+            );
             if (lpToken.token0() != address(DAI)) {
                 ERC20(lpToken.token0()).safeApprove(
                     address(synapseStablePool),
@@ -105,8 +110,16 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         emit PearlCompounderCreated(_asset, isStable, _gauge);
     }
 
-    // Set the amount of PEARL to be locked in Yearn's vePEARL voter from each harvest
-    function setKeepPEARL(uint256 _keepPEARL) external onlyManagement {
+    /// @notice Set the amount and address of PEARL to be locked in Yearn's vePEARL voter from each harvest
+    /// @dev cannot be zero address
+    /// @param _keepPEARL amount of PEARL to be locked
+    /// @param _voter address of PEARL voter
+    function setKeepPEARL(
+        uint256 _keepPEARL,
+        address _voter
+    ) external onlyManagement {
+        require(_voter != address(0), "!voter");
+        voter = _voter;
         keepPEARL = _keepPEARL;
     }
 
@@ -305,7 +318,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             return _amount;
         }
         if (token == address(usdr)) {
-            return _amount * USDR_DAI_PRECISION;
+            return _amount * USDR_TO_DAI_PRECISION;
         }
 
         if (isStable) {
@@ -323,7 +336,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                 token,
                 address(usdr)
             );
-            amountInDAI = amountInDAI * USDR_DAI_PRECISION;
+            amountInDAI = amountInDAI * USDR_TO_DAI_PRECISION;
         }
     }
 
@@ -361,28 +374,18 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     function _swapStable(address _tokenOut, uint256 _usdrAmount) internal {
-
-        // @todo point 11. from schlag
-        uint256 daiOut = usdrExchange.swapToUnderlying(
-            _usdrAmount,
-            address(this)
-        );
+        uint256 daiOut = _swapToUnderlying(_usdrAmount);
 
         if (_tokenOut != address(DAI)) {
-            uint8 daiId = synapseStablePool.getTokenIndex(
-                address(DAI)
-            );
-            uint8 tokenOutId = synapseStablePool.getTokenIndex(
-                _tokenOut
-            );
-            uint256 minAmountOut = daiOut * (FEE_DENOMINATOR - slippageStable) /
-                FEE_DENOMINATOR;
-            
+            uint8 daiId = synapseStablePool.getTokenIndex(address(DAI));
+            uint8 tokenOutId = synapseStablePool.getTokenIndex(_tokenOut);
+            uint256 minAmountOut = (daiOut *
+                (FEE_DENOMINATOR - slippageStable)) / FEE_DENOMINATOR;
+
             // remove decimals if needed
             uint256 tokenOutDecimals = ERC20(_tokenOut).decimals();
             if (tokenOutDecimals < 18) {
-                minAmountOut = minAmountOut / 10 **
-                    (18 - tokenOutDecimals);
+                minAmountOut = minAmountOut / 10 ** (18 - tokenOutDecimals);
             }
             synapseStablePool.swap(
                 daiId,
@@ -391,6 +394,34 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                 minAmountOut,
                 block.timestamp
             );
+        }
+    }
+
+    function _swapToUnderlying(uint256 _usdrAmount) internal returns (uint256) {
+        // Get the expected amount of `asset` out with the withdrawal fee.
+        uint256 outWithFee = (_usdrAmount -
+            ((_usdrAmount * usdrExchange.withdrawalFee()) / MAX_BPS)) *
+            USDR_TO_DAI_PRECISION;
+
+        // If we can get more from the Pearl pool use that.
+        (uint256 daiSwap, bool stable) = pearlRouter.getAmountOut(
+            _usdrAmount,
+            address(usdr),
+            address(DAI)
+        );
+        if (daiSwap > outWithFee) {
+            return
+                pearlRouter.swapExactTokensForTokensSimple(
+                    _usdrAmount,
+                    outWithFee,
+                    address(usdr),
+                    address(DAI),
+                    stable,
+                    address(this),
+                    block.timestamp
+                )[1];
+        } else {
+            return usdrExchange.swapToUnderlying(_usdrAmount, address(this));
         }
     }
 
@@ -412,7 +443,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (pearlBalance > minRewardsToSell) {
             if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
                 pearl.safeTransfer(
-                    TokenizedStrategy.management(),
+                    voter,
                     ((pearlBalance - pearlBalanceBefore) * keepPEARL) /
                         FEE_DENOMINATOR
                 );

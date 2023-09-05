@@ -4,7 +4,7 @@ pragma solidity 0.8.18;
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 
 interface IStrategyInterface is IStrategy {
-    function setKeepPEARL(uint256 _keepPEARL) external;
+    function setKeepPEARL(uint256 _keepPEARL, address _voter) external;
 
     function setMinRewardsToSell(uint256 _minRewardsToSell) external;
 

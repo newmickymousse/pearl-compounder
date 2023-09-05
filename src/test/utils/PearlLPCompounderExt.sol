@@ -2,6 +2,7 @@
 pragma solidity 0.8.18;
 
 import {PearlLPCompounder} from "../../PearlLPCompounder.sol";
+
 /**
  * The `TokenizedStrategy` variable can be used to retrieve the strategies
  * specifc storage data your contract.
@@ -16,13 +17,15 @@ import {PearlLPCompounder} from "../../PearlLPCompounder.sol";
 // NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
 
 contract PearlLPCompounderExt is PearlLPCompounder {
-
     constructor(
         address _asset,
         string memory _name
     ) PearlLPCompounder(_asset, _name) {}
 
-    function getValueInDai(address _token, uint256 _amount) public view returns (uint256) {
+    function getValueInDai(
+        address _token,
+        uint256 _amount
+    ) public view returns (uint256) {
         return _getValueInDAI(_token, _amount);
     }
 }
