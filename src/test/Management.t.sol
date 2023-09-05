@@ -82,5 +82,10 @@ contract OperationTest is Setup {
         strategy.sweep(address(airdropedToken));
         assertEq(airdropedToken.balanceOf(address(strategy)), 0);
         assertEq(airdropedToken.balanceOf(management), amount);
+
+        // management cannot sweep asset
+        vm.prank(management);
+        vm.expectRevert("!asset");
+        strategy.sweep(address(asset));
     }
 }

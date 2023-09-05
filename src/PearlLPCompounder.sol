@@ -37,10 +37,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     IStableSwapPool private constant SYNAPSE_STABLE_POOL =
         IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
 
-    IRewardPool private immutable pearlRewards;
-    IPair private immutable lpToken;
-    bool private immutable isStable;
-
     ERC20 private constant USDR =
         ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
     ERC20 private constant PEARL =
@@ -50,6 +46,11 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     uint256 private constant USDR_TO_DAI_PRECISION = 1e9;
     uint256 private constant FEE_DENOMINATOR = 10_000; // keepPEARL is in bps
+
+    IRewardPool private immutable pearlRewards;
+    IPair private immutable lpToken;
+    bool private immutable isStable;
+
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
@@ -187,17 +188,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     /**
      * @dev Will attempt to free the '_amount' of 'asset'.
      *
-     * The amount of 'asset' that is already loose has already
-     * been accounted for.
-     *
-     * This function is called during {withdraw} and {redeem} calls.
-     * Meaning that unless a whitelist is implemented it will be
-     * entirely permsionless and thus can be sandwhiched or otherwise
-     * manipulated.
-     *
-     * Should not rely on asset.balanceOf(address(this)) calls other than
-     * for diff accounting puroposes.
-     *
      * Any difference between `_amount` and what is actually freed will be
      * counted as a loss and passed on to the withdrawer. This means
      * care should be taken in times of illiquidity. It may be better to revert
@@ -234,10 +224,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      * Care should be taken when relying on oracles or swap values rather
      * than actual amounts as all Strategy profit/loss accounting will
      * be done based on this returned value.
-     *
-     * This can still be called post a shutdown, a strategist can check
-     * `TokenizedStrategy.isShutdown()` to decide if funds should be
-     * redeployed or simply realize any profits/losses.
      *
      * @return _totalAssets A trusted and accurate account for the total
      * amount of 'asset' the strategy currently holds including idle funds.
@@ -435,21 +421,9 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     function _claimAndSellRewards() internal {
-        uint256 pearlBalanceBefore = PEARL.balanceOf(address(this));
-        pearlRewards.getReward();
-        uint256 pearlBalance = PEARL.balanceOf(address(this));
+        uint256 pearlBalance = _claimRewards();
 
         if (pearlBalance > minRewardsToSell) {
-            if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
-                PEARL.safeTransfer(
-                    voter,
-                    ((pearlBalance - pearlBalanceBefore) * keepPEARL) /
-                        FEE_DENOMINATOR
-                );
-            }
-
-            pearlBalance = PEARL.balanceOf(address(this));
-
             // get lp reserves
             (
                 address tokenA,
@@ -489,6 +463,22 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                 block.timestamp
             );
         }
+    }
+
+    function _claimRewards() internal returns (uint256) {
+        uint256 pearlBalanceBefore = PEARL.balanceOf(address(this));
+        pearlRewards.getReward();
+        uint256 pearlBalance = PEARL.balanceOf(address(this));
+
+        if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
+            PEARL.safeTransfer(
+                voter,
+                ((pearlBalance - pearlBalanceBefore) * keepPEARL) /
+                    FEE_DENOMINATOR
+            );
+            pearlBalance = PEARL.balanceOf(address(this));
+        }
+        return pearlBalance;
     }
 
     function claimFees() external onlyManagement {
@@ -543,7 +533,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     /// @param _token The ERC20 token to sweep
     function sweep(address _token) external onlyManagement {
         require(_token != asset, "!asset");
-        require(_token != address(PEARL), "!PEARL");
         ERC20 token = ERC20(_token);
         token.safeTransfer(
             TokenizedStrategy.management(),

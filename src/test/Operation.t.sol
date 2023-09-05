@@ -56,11 +56,9 @@ contract OperationTest is Setup {
     }
 
     function test_profitableReport(
-        uint256 _amount,
-        uint16 _profitFactor
+        uint256 _amount
     ) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -71,10 +69,6 @@ contract OperationTest is Setup {
         // Earn Interest
         skip(20 days);
         vm.roll(block.number + 1);
-
-        // TODO: implement logic to simulate earning interest.
-        // uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        // airdrop(asset, address(strategy), toAirdrop);
 
         // Report profit
         vm.prank(keeper);
@@ -100,11 +94,9 @@ contract OperationTest is Setup {
     }
 
     function test_profitableReport_withFees(
-        uint256 _amount,
-        uint16 _profitFactor
+        uint256 _amount
     ) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
         // Set protofol fee to 0 and perf fee to 10%
         setFees(0, 1_000);
@@ -118,10 +110,6 @@ contract OperationTest is Setup {
         // Earn Interest
         skip(20 days);
         vm.roll(block.number + 1);
-
-        // TODO: implement logic to simulate earning interest.
-        // uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        // airdrop(asset, address(strategy), toAirdrop);
 
         // Report profit
         (bool shouldReport, ) = strategy.reportTrigger(address(strategy));
@@ -179,7 +167,6 @@ contract OperationTest is Setup {
         assertFalse(shouldReport);
 
         // verify reportTrigger for airdrop asset
-        console.log("airdop asset");
         deal(address(asset), address(strategy), minFuzzAmount);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
         assertTrue(shouldReport);
@@ -189,7 +176,6 @@ contract OperationTest is Setup {
         assertFalse(shouldReport);
 
         // verify reportTrigger for time from last report
-        console.log("skip time");
         skip(strategy.profitMaxUnlockTime() + 1 minutes);
         vm.roll(block.number + 1);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
