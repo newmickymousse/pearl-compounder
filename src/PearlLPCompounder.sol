@@ -89,10 +89,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         isStable = lpToken.stable();
         if (isStable) {
             // approve synapse pool for stables only
-            DAI.safeApprove(
-                address(SYNAPSE_STABLE_POOL),
-                type(uint256).max
-            );
+            DAI.safeApprove(address(SYNAPSE_STABLE_POOL), type(uint256).max);
             if (lpToken.token0() != address(DAI)) {
                 ERC20(lpToken.token0()).safeApprove(
                     address(SYNAPSE_STABLE_POOL),
