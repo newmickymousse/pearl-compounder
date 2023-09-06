@@ -4,7 +4,7 @@ pragma solidity 0.8.18;
 import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
 
 interface IStrategyInterface is IStrategy {
-    function setKeepPEARL(uint256 _keepPEARL) external;
+    function setKeepPEARL(uint256 _keepPEARL, address _voter) external;
 
     function setMinRewardsToSell(uint256 _minRewardsToSell) external;
 
@@ -14,12 +14,6 @@ interface IStrategyInterface is IStrategy {
 
     function getRewardsValue() external view returns (uint256);
 
-    function pearl() external view returns (address);
-
-    function setSlippage(uint256 _slippage) external;
-
-    function slippage() external view returns (uint256);
-
     function setSlippageStable(uint256 _slippageStable) external;
 
     function slippageStable() external view returns (uint256);
@@ -27,4 +21,14 @@ interface IStrategyInterface is IStrategy {
     function reportTrigger(
         address _strategy
     ) external view returns (bool, bytes memory);
+
+    function sweep(address _token) external;
+
+    function claimAndSellRewards() external;
+
+    function claimFees() external;
+
+    function setUseCurveStable(bool _useCurveStable) external;
+
+    function useCurveStable() external view returns (bool);
 }

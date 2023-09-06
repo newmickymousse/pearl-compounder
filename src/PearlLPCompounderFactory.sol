@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.18;
-import "forge-std/console.sol";
 
-import {PearlLPStableCompounder} from "./PearlLPStableCompounder.sol";
+import {PearlLPCompounder} from "./PearlLPCompounder.sol";
+import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
-interface IStrategy {
-    function setPerformanceFeeRecipient(address) external;
-
-    function setKeeper(address) external;
-
-    function setPendingManagement(address) external;
-}
-
-contract PearlLPStableCompounderFactory {
-    event NewPearlLPStableCompounder(
-        address indexed strategy,
-        address indexed asset
-    );
+contract PearlLPCompounderFactory {
+    event NewPearlLPCompounder(address indexed strategy, address indexed asset);
 
     address public management;
     address public performanceFeeRecipient;
@@ -39,15 +28,14 @@ contract PearlLPStableCompounderFactory {
      * @param _name The name for the lender to use.
      * @return . The address of the new lender.
      */
-    function newPearlLPStableCompounder(
+    function newPearlLPCompounder(
         address _asset,
         string memory _name
     ) external returns (address) {
         // We need to use the custom interface with the
         // tokenized strategies available setters.
-        console.log("asset creation strategy: %s", _asset);
-        IStrategy newStrategy = IStrategy(
-            address(new PearlLPStableCompounder(_asset, _name))
+        IStrategyInterface newStrategy = IStrategyInterface(
+            address(new PearlLPCompounder(_asset, _name))
         );
 
         newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
@@ -56,7 +44,9 @@ contract PearlLPStableCompounderFactory {
 
         newStrategy.setPendingManagement(management);
 
-        emit NewPearlLPStableCompounder(address(newStrategy), _asset);
+        newStrategy.setKeepPEARL(0, management);
+
+        emit NewPearlLPCompounder(address(newStrategy), _asset);
         return address(newStrategy);
     }
 

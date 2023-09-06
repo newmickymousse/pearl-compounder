@@ -26,19 +26,19 @@ contract FactoryTest is Setup {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         IStrategyInterface strat1 = IStrategyInterface(
-            strategyFactory.newPearlLPStableCompounder(
+            strategyFactory.newPearlLPCompounder(
                 tokenAddrs["USDC-USDR-lp"],
                 "USDC-USDR-lp-compounder"
             )
         );
         IStrategyInterface strat2 = IStrategyInterface(
-            strategyFactory.newPearlLPStableCompounder(
+            strategyFactory.newPearlLPCompounder(
                 tokenAddrs["DAI-USDR-lp"],
                 "DAI-USDR-lp-compounder"
             )
         );
         IStrategyInterface strat3 = IStrategyInterface(
-            strategyFactory.newPearlLPStableCompounder(
+            strategyFactory.newPearlLPCompounder(
                 tokenAddrs["USDT-USDR-lp"],
                 "USDT-USDR-lp-compounder"
             )

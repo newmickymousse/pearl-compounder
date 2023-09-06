@@ -11,4 +11,6 @@ interface IUSDRExchange {
         uint256 amountIn,
         address to
     ) external returns (uint256);
+
+    function withdrawalFee() external view returns (uint256);
 }
