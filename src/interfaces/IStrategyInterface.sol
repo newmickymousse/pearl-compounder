@@ -27,4 +27,8 @@ interface IStrategyInterface is IStrategy {
     function claimAndSellRewards() external;
 
     function claimFees() external;
+
+    function setUseCurveStable(bool _useCurveStable) external;
+
+    function useCurveStable() external view returns (bool);
 }

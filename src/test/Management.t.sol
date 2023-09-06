@@ -99,4 +99,25 @@ contract OperationTest is Setup {
         vm.expectRevert("!PEARL");
         strategy.sweep(tokenAddrs["PEARL"]);
     }
+
+    function test_setUseCurve() public {
+        // user cannot setUseCurveStable
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setUseCurveStable(true);
+
+        // management can setUseCurveStable
+        address assetAddress = address(asset);
+        vm.prank(management);
+        if (
+            assetAddress == tokenAddrs["USDT-USDR-lp"] ||
+            assetAddress == tokenAddrs["USDC-USDR-lp"]
+        ) {
+            strategy.setUseCurveStable(true);
+            assertTrue(strategy.useCurveStable());
+        } else {
+            vm.expectRevert("!curveUnsupported");
+            strategy.setUseCurveStable(true);
+        }
+    }
 }

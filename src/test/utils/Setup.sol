@@ -167,6 +167,7 @@ contract Setup is ExtendedTest, IEvents {
         vm.startPrank(management);
         strategy.setPerformanceFee(_performanceFee);
         strategy.setKeepPEARL(1000, management); // set keepPEARL to 10%
+        // strategy.setUseCurveStable(true); // use curve instead of synapse
         vm.stopPrank();
     }
 

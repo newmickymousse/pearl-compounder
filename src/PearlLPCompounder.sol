@@ -13,6 +13,7 @@ import {IRewardPool} from "./interfaces/PearlFi/IRewardPool.sol";
 import {IVoter} from "./interfaces/PearlFi/IVoter.sol";
 import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
 import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
+import {ICurvePool} from "./interfaces/Curve/ICurvePool.sol";
 
 /**
  * The `TokenizedStrategy` variable can be used to retrieve the strategies
@@ -36,6 +37,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         IPearlRouter(0xcC25C0FD84737F44a7d38649b69491BBf0c7f083); // use value from: https://docs.pearl.exchange/protocol-details/contract-addresses-v1.5
     IStableSwapPool private constant SYNAPSE_STABLE_POOL =
         IStableSwapPool(0x85fCD7Dd0a1e1A9FCD5FD886ED522dE8221C3EE5);
+    ICurvePool private constant CURVE_AAVE_POOL =
+        ICurvePool(0x445FE580eF8d70FF569aB36e80c647af338db351);
 
     ERC20 private constant USDR =
         ERC20(0x40379a439D4F6795B6fc9aa5687dB461677A2dBa);
@@ -46,6 +49,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     address private constant GOV = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52; //yearn governance
     uint256 private constant USDR_TO_DAI_PRECISION = 1e9;
+    int128 private constant CURVE_DAI_INDEX = 0;
+    int128 private constant UNSUPPORTED = -99;
 
     IRewardPool private immutable pearlRewards;
     IPair private immutable lpToken;
@@ -56,6 +61,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
     /// @notice The address of PEARL voter. This is where we send any keepPEARL.
     address public voter;
+    bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
+    int128 public curveStableIndex; // index of lp token in Curve AAVE pool
 
     event PearlCompounderCreated(
         address indexed lpToken,
@@ -90,17 +97,25 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (isStable) {
             // approve synapse pool for stables only
             DAI.safeApprove(address(SYNAPSE_STABLE_POOL), type(uint256).max);
-            if (lpToken.token0() != address(DAI)) {
-                ERC20(lpToken.token0()).safeApprove(
-                    address(SYNAPSE_STABLE_POOL),
+
+            // approve curve pool for stables only
+            address usdt = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
+            address usdc = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+            if (lpToken.token0() == usdc || lpToken.token1() == usdc) {
+                ERC20(address(DAI)).safeApprove(
+                    address(CURVE_AAVE_POOL),
                     type(uint256).max
                 );
-            }
-            if (lpToken.token1() != address(DAI)) {
-                ERC20(lpToken.token1()).safeApprove(
-                    address(SYNAPSE_STABLE_POOL),
+                curveStableIndex = 1; // usdc index
+            } else if (lpToken.token0() == usdt || lpToken.token1() == usdt) {
+                ERC20(address(DAI)).safeApprove(
+                    address(CURVE_AAVE_POOL),
                     type(uint256).max
                 );
+                curveStableIndex = 2; // usdt index
+            } else {
+                // only 3 stablecoins are supported
+                curveStableIndex = UNSUPPORTED; // not supported
             }
         }
 
@@ -135,6 +150,13 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) external onlyManagement {
         require(_slippageStable < MAX_BPS, "!slippageStable");
         slippageStable = _slippageStable;
+    }
+
+    /// @notice Set if we should use Curve AAVE pool for stable swaps
+    /// @param _useCurveStable true if we should use Curve AAVE pool for stable swaps
+    function setUseCurveStable(bool _useCurveStable) external onlyManagement {
+        require(curveStableIndex != UNSUPPORTED, "!curveUnsupported");
+        useCurveStable = _useCurveStable;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -254,9 +276,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     /**
      * @notice Returns wether or not report() should be called by a keeper.
-     * @dev Check if there are idle assets, if the strategy is not shutdown
-     * and if there are any rewards to be claimed.
-     *
+     * @dev Check if the strategy is not shutdown and if there are any rewards to be claimed.
      * @return . Should return true if report() should be called by keeper or false if not.
      */
     function reportTrigger(
@@ -265,7 +285,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (TokenizedStrategy.isShutdown()) return (false, bytes("Shutdown"));
         // gas cost is not concern here
         if (
-            balanceOfAsset() > 0 ||
             pearlRewards.earned(address(this)) + balanceOfRewards() >
             minRewardsToSell
         ) {
@@ -334,6 +353,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         uint256 _amountIn
     ) internal returns (uint256) {
         if (_tokenOut != address(PEARL) && _amountIn > 0) {
+            // there is no oracle for PEARL so we use min amount 0
             uint256 usdrOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
                 _amountIn,
                 0,
@@ -368,28 +388,37 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function _swapStable(
         address _tokenOut,
         uint256 _usdrAmount
-    ) internal returns (uint256) {
-        uint256 daiOut = _swapToUnderlying(_usdrAmount);
+    ) internal returns (uint256 amountOut) {
+        amountOut = _swapToUnderlying(_usdrAmount);
 
         if (_tokenOut != address(DAI)) {
-            uint8 daiId = SYNAPSE_STABLE_POOL.getTokenIndex(address(DAI));
-            uint8 tokenOutId = SYNAPSE_STABLE_POOL.getTokenIndex(_tokenOut);
-            uint256 minAmountOut = (daiOut * (MAX_BPS - slippageStable)) /
+            uint256 minAmountOut = (amountOut * (MAX_BPS - slippageStable)) /
                 MAX_BPS;
-
             // remove decimals if needed
             uint256 tokenOutDecimals = ERC20(_tokenOut).decimals();
             if (tokenOutDecimals < 18) {
                 minAmountOut = minAmountOut / 10 ** (18 - tokenOutDecimals);
             }
-            return
-                SYNAPSE_STABLE_POOL.swap(
+
+            if (useCurveStable) {
+                amountOut = CURVE_AAVE_POOL.exchange_underlying(
+                    CURVE_DAI_INDEX,
+                    curveStableIndex,
+                    amountOut,
+                    minAmountOut
+                );
+            } else {
+                uint8 daiId = SYNAPSE_STABLE_POOL.getTokenIndex(address(DAI));
+                uint8 tokenOutId = SYNAPSE_STABLE_POOL.getTokenIndex(_tokenOut);
+
+                amountOut = SYNAPSE_STABLE_POOL.swap(
                     daiId,
                     tokenOutId,
-                    daiOut,
+                    amountOut,
                     minAmountOut,
                     block.timestamp
                 );
+            }
         }
     }
 
@@ -503,29 +532,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     function claimAndSellRewards() external onlyManagement {
         _claimAndSellRewards();
-    }
-
-    /**
-     * @dev Deploy idle funds.
-     *
-     * @param _totalIdle The current amount of idle funds that are available to deploy.
-     */
-    function _tend(uint256 _totalIdle) internal override {
-        _deployFunds(_totalIdle);
-    }
-
-    /**
-     * @notice Returns wether or not tend() should be called by a keeper.
-     * @dev Check if there idle assets and if the strategy is not shutdown.
-     *
-     * @return shouldTend Should return true if tend() should be called by keeper or false if not.
-     */
-    function tendTrigger() public view override returns (bool shouldTend) {
-        if (
-            !TokenizedStrategy.isShutdown() && TokenizedStrategy.totalIdle() > 0
-        ) {
-            shouldTend = true;
-        }
     }
 
     /**

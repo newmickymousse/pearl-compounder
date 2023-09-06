@@ -162,8 +162,20 @@ contract OperationTest is Setup {
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
         assertFalse(shouldReport);
 
-        // verify reportTrigger for airdrop asset
-        deal(address(asset), address(strategy), minFuzzAmount);
+        // verify reportTrigger for idle rewards
+        uint256 minRewardsToSell = strategy.minRewardsToSell();
+        deal(tokenAddrs["PEARL"], address(strategy), minRewardsToSell + 1);
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertTrue(shouldReport);
+        vm.prank(keeper);
+        strategy.report();
+        (shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertFalse(shouldReport);
+
+        // verify reportTrigger for pending rewards
+        vm.prank(management);
+        strategy.setMinRewardsToSell(1);
+        skip(strategy.profitMaxUnlockTime() - 1 minutes);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
         assertTrue(shouldReport);
         vm.prank(keeper);
