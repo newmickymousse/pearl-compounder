@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
-import {Setup} from "./utils/Setup.sol";
+import {Setup, ERC20} from "./utils/Setup.sol";
 
 contract OperationTest is Setup {
     function setUp() public override {
@@ -223,5 +223,49 @@ contract OperationTest is Setup {
         strategy.redeem(_amount, user, user);
 
         assertTrue(!strategy.tendTrigger());
+    }
+
+    function test_dropLpToken(uint256 _amount, uint64 _airdrop) public {
+        if (address(asset) != tokenAddrs["USDC-USDR-lp"]) {
+            // change values
+            return;
+        }
+
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        checkStrategyTotals(strategy, _amount, _amount, 0);
+
+        // airdrop lp token, change token if needed
+        _airdrop = uint64(bound(_airdrop, 100, 1e8));
+        deal(tokenAddrs["USDC"], address(strategy), _airdrop);
+
+        // Earn Interest
+        skip(20 days);
+        vm.roll(block.number + 1);
+
+        // Report profit
+        (bool shouldReport, ) = strategy.reportTrigger(address(strategy));
+        assertTrue(shouldReport);
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        // Check return Values
+        assertGe(profit, 0, "!profit");
+        assertEq(loss, 0, "!loss");
+
+        // some pearl is left because there is usdc in the strategy
+        assertGt(ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)), 0);
+        assertLt(
+            ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
+            1e9,
+            "USDR balance"
+        );
+        assertLt(
+            ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
+            5e7,
+            "USDC balance"
+        );
     }
 }

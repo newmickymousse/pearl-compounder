@@ -83,4 +83,43 @@ contract InternalTest is Setup {
         assertGt(valueInDai, 20000e18, "!valueInDai");
         assertLt(valueInDai, 40000e18, "!valueInDai");
     }
+
+    function test_optimalAmountInPearl() public {
+        pearlLPCompounderExt = new PearlLPCompounderExt(
+            tokenAddrs["USDC-USDR-lp"],
+            "PearlLPCompounderExt"
+        );
+        address tokenIn = tokenAddrs["USDC"];
+        uint256 amount = 10e6;
+        uint256 amountInPearl = pearlLPCompounderExt.getValueInPearl(
+            tokenIn,
+            amount
+        );
+        assertGt(amountInPearl, 1e18, "!amountInPearl");
+        assertGt(amountInPearl, 1e19, "!amountInPearl");
+
+        // without token in, same amount in pearl
+        uint256 optimalAmountInPear = pearlLPCompounderExt
+            .getOptimalSwapAmountInPearl(tokenIn, 0, amountInPearl);
+        // no token, we need to swap all
+        assertEq(optimalAmountInPear, amountInPearl, "!optimalAmountInPear");
+
+        // airdrop 1/4 token in
+        // deal(tokenIn, address(pearlLPCompounderExt), amount / 4);
+        uint256 optimalAmountInPear2 = pearlLPCompounderExt
+            .getOptimalSwapAmountInPearl(tokenIn, amount / 4, amountInPearl);
+        // not enough token in, swap more than 1/2
+        assertGt(
+            optimalAmountInPear2,
+            amountInPearl / 2,
+            "!optimalAmountInPear2"
+        );
+
+        // airdrop token in
+        // deal(tokenIn, address(pearlLPCompounderExt), amount);
+        uint256 optimalAmountInPear3 = pearlLPCompounderExt
+            .getOptimalSwapAmountInPearl(tokenIn, amount, amountInPearl);
+        // enough token in, no swap
+        assertEq(optimalAmountInPear3, 0, "!optimalAmountInPear3");
+    }
 }

@@ -28,4 +28,19 @@ contract PearlLPCompounderExt is PearlLPCompounder {
     ) public view returns (uint256) {
         return _getValueInDAI(_token, _amount);
     }
+
+    function getValueInPearl(
+        address _token,
+        uint256 _amount
+    ) public view returns (uint256) {
+        return _getValueInPearl(_token, _amount);
+    }
+
+    function getOptimalSwapAmountInPearl(
+        address _token,
+        uint256 _tokenBalance,
+        uint256 _amount
+    ) public view returns (uint256) {
+        return _getOptimalSwapAmountInPearl(_token, _tokenBalance, _amount);
+    }
 }
