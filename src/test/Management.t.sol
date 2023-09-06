@@ -54,6 +54,13 @@ contract OperationTest is Setup {
     }
 
     function test_claimAndSellRewards() public {
+        // airdrop minimal amount of rewards
+        deal(
+            tokenAddrs["PEARL"],
+            address(strategy),
+            strategy.minRewardsToSell() + 1
+        );
+
         // user cannot claimAndSellRewards
         vm.prank(user);
         vm.expectRevert("!Authorized");
@@ -65,25 +72,31 @@ contract OperationTest is Setup {
     }
 
     function test_sweep() public {
+        address gov = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52;
         uint256 amount = 1e18;
         ERC20 airdropedToken = new ERC20("AIR", "AR");
         deal(address(airdropedToken), address(strategy), amount);
 
-        // user cannot sweep
-        vm.prank(user);
-        vm.expectRevert("!Authorized");
+        // management cannot sweep
+        vm.prank(management);
+        vm.expectRevert("!governance");
         strategy.sweep(address(airdropedToken));
 
-        // management can sweep
+        // gov can sweep
         assertEq(airdropedToken.balanceOf(address(strategy)), amount);
-        vm.prank(management);
+        vm.prank(gov);
         strategy.sweep(address(airdropedToken));
         assertEq(airdropedToken.balanceOf(address(strategy)), 0);
         assertEq(airdropedToken.balanceOf(management), amount);
 
-        // management cannot sweep asset
-        vm.prank(management);
+        // gov cannot sweep asset
+        vm.prank(gov);
         vm.expectRevert("!asset");
         strategy.sweep(address(asset));
+
+        // gov cannot sweep PEARL
+        vm.prank(gov);
+        vm.expectRevert("!PEARL");
+        strategy.sweep(tokenAddrs["PEARL"]);
     }
 }
