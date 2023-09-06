@@ -59,8 +59,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
-    /// @notice The address of PEARL voter. This is where we send any keepPEARL.
-    address public voter;
+    /// @notice The address to keep pearl.
+    address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
     int128 public curveStableIndex = UNSUPPORTED; // index of lp token in Curve AAVE pool
 
@@ -122,16 +122,16 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         emit PearlCompounderCreated(_asset, isStable, _gauge);
     }
 
-    /// @notice Set the amount and address of PEARL to be locked in Yearn's vePEARL voter from each harvest
+    /// @notice Set the amount and address of PEARL to be kept
     /// @dev cannot be zero address
     /// @param _keepPEARL amount of PEARL to be locked
-    /// @param _voter address of PEARL voter
+    /// @param _keepPearlAddress address to keep PEARL
     function setKeepPEARL(
         uint256 _keepPEARL,
-        address _voter
+        address _keepPearlAddress
     ) external onlyManagement {
-        require(_voter != address(0), "!voter");
-        voter = _voter;
+        require(_keepPearlAddress != address(0), "!keepPearlAddress");
+        keepPearlAddress = _keepPearlAddress;
         keepPEARL = _keepPEARL;
     }
 
@@ -560,7 +560,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
         if (keepPEARL > 0 && pearlBalance - pearlBalanceBefore > 0) {
             PEARL.safeTransfer(
-                voter,
+                keepPearlAddress,
                 ((pearlBalance - pearlBalanceBefore) * keepPEARL) / MAX_BPS
             );
             pearlBalance = PEARL.balanceOf(address(this));
