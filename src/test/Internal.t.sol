@@ -122,4 +122,28 @@ contract InternalTest is Setup {
         // enough token in, no swap
         assertEq(optimalAmountInPear3, 0, "!optimalAmountInPear3");
     }
+
+    function test_getValueInPearl() public {
+        pearlLPCompounderExt = new PearlLPCompounderExt(
+            tokenAddrs["USDC-USDR-lp"],
+            "PearlLPCompounderExt"
+        );
+        address tokenIn = tokenAddrs["USDC"];
+        uint256 amount = 1e6;
+        uint256 amountInPearl = pearlLPCompounderExt.getValueInPearl(
+            tokenIn,
+            amount
+        );
+
+        // $1 ~ 3 pearl
+        assertGt(amountInPearl, 1e18, "!amountInPearlUSDC");
+        assertLt(amountInPearl, 5e18, "!amountInPearlUSDC");
+
+        // token in is usdr
+        tokenIn = tokenAddrs["USDR"];
+        amount = 1e9;
+        amountInPearl = pearlLPCompounderExt.getValueInPearl(tokenIn, amount);
+        assertGt(amountInPearl, 1e18, "!amountInPearlUSDR");
+        assertLt(amountInPearl, 5e18, "!amountInPearlUSDR");
+    }
 }

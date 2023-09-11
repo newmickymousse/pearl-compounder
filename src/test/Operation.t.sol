@@ -166,32 +166,35 @@ contract OperationTest is Setup {
         uint256 minRewardsToSell = strategy.minRewardsToSell();
         deal(tokenAddrs["PEARL"], address(strategy), minRewardsToSell + 1);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertTrue(shouldReport);
+        assertTrue(shouldReport, "!shouldReportRewards");
         vm.prank(keeper);
         strategy.report();
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport);
+        assertFalse(shouldReport, "!dontReport");
 
         // verify reportTrigger for pending rewards
         vm.prank(management);
         strategy.setMinRewardsToSell(1);
         skip(strategy.profitMaxUnlockTime() - 1 minutes);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertTrue(shouldReport);
+        assertTrue(shouldReport, "!shouldReportPendingRewards");
         vm.prank(keeper);
         strategy.report();
+        // set minRewardsToSell back to original value
+        vm.prank(management);
+        strategy.setMinRewardsToSell(minRewardsToSell);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport);
+        assertFalse(shouldReport, "!dontReport");
 
         // verify reportTrigger for time from last report
         skip(strategy.profitMaxUnlockTime() + 1 minutes);
         vm.roll(block.number + 1);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertTrue(shouldReport);
+        assertTrue(shouldReport, "!shouldReportTime");
         vm.prank(keeper);
         strategy.report();
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport);
+        assertFalse(shouldReport, "!dontReport");
     }
 
     function test_tendTrigger(uint256 _amount) public {
@@ -225,7 +228,7 @@ contract OperationTest is Setup {
         assertTrue(!strategy.tendTrigger());
     }
 
-    function test_dropLpToken(uint256 _amount, uint64 _airdrop) public {
+    function test_airdropTokens(uint256 _amount, uint64 _airdrop) public {
         if (address(asset) != tokenAddrs["USDC-USDR-lp"]) {
             // change values
             return;
@@ -241,13 +244,14 @@ contract OperationTest is Setup {
         _airdrop = uint64(bound(_airdrop, 100, 1e8));
         deal(tokenAddrs["USDC"], address(strategy), _airdrop);
 
-        // Earn Interest
-        skip(20 days);
-        vm.roll(block.number + 1);
+        // airdrop pearl token
+        deal(
+            tokenAddrs["PEARL"],
+            address(strategy),
+            bound(_amount, minFuzzAmount, 1e22)
+        );
 
         // Report profit
-        (bool shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertTrue(shouldReport);
         vm.prank(keeper);
         (uint256 profit, uint256 loss) = strategy.report();
 
@@ -257,14 +261,16 @@ contract OperationTest is Setup {
 
         // some pearl is left because there is usdc in the strategy
         assertGt(ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)), 0);
+        // all usdr is added to the strategy
         assertLt(
             ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
             1e9,
             "USDR balance"
         );
+        // some usdc is left
         assertLt(
             ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
-            5e7,
+            1e8,
             "USDC balance"
         );
     }

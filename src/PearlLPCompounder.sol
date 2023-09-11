@@ -352,33 +352,31 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address _tokenOut,
         uint256 _amountIn
     ) internal returns (uint256 amountOut) {
-        if (_tokenOut != address(PEARL) && _amountIn > 0) {
-            // there is no oracle for PEARL so we use min amount 0
-            amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
-                _amountIn,
-                0,
-                address(PEARL),
-                address(USDR),
-                false,
-                address(this),
-                block.timestamp
-            )[1];
+        // there is no oracle for PEARL so we use min amount 0
+        amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
+            _amountIn,
+            0,
+            address(PEARL),
+            address(USDR),
+            false,
+            address(this),
+            block.timestamp
+        )[1];
 
-            if (_tokenOut != address(USDR)) {
-                //if we need anything but USDR, let's withdraw from tangible or sell on pearl to get DAI first
-                if (isStable) {
-                    amountOut = _swapStable(_tokenOut, amountOut);
-                } else {
-                    amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
-                        amountOut,
-                        0,
-                        address(USDR),
-                        _tokenOut,
-                        false,
-                        address(this),
-                        block.timestamp
-                    )[1];
-                }
+        if (_tokenOut != address(USDR)) {
+            //if we need anything but USDR, let's withdraw from tangible or sell on pearl to get DAI first
+            if (isStable) {
+                amountOut = _swapStable(_tokenOut, amountOut);
+            } else {
+                amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
+                    amountOut,
+                    0,
+                    address(USDR),
+                    _tokenOut,
+                    false,
+                    address(this),
+                    block.timestamp
+                )[1];
             }
         }
     }
@@ -461,12 +459,25 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     function _getValueInPearl(
         address tokenIn,
         uint256 _amount
-    ) internal view returns (uint256) {
-        IPearlRouter.route[] memory routes = new IPearlRouter.route[](2);
-        routes[0] = IPearlRouter.route(tokenIn, address(USDR), isStable);
-        routes[1] = IPearlRouter.route(address(USDR), address(PEARL), false);
-        uint256[] memory amounts = PEARL_ROUTER.getAmountsOut(_amount, routes);
-        return amounts[2]; // 3 amounts, use the last one
+    ) internal view returns (uint256 pearl) {
+        if (tokenIn == address(USDR)) {
+            IPearlRouter.route[] memory routes = new IPearlRouter.route[](1);
+            routes[0] = IPearlRouter.route(
+                address(USDR),
+                address(PEARL),
+                false
+            );
+            pearl = PEARL_ROUTER.getAmountsOut(_amount, routes)[1];
+        } else {
+            IPearlRouter.route[] memory routes = new IPearlRouter.route[](2);
+            routes[0] = IPearlRouter.route(tokenIn, address(USDR), isStable);
+            routes[1] = IPearlRouter.route(
+                address(USDR),
+                address(PEARL),
+                false
+            );
+            pearl = PEARL_ROUTER.getAmountsOut(_amount, routes)[2];
+        }
     }
 
     function _claimAndSellRewards() internal {
