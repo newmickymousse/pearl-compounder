@@ -10,7 +10,6 @@ contract OperationTest is Setup {
     }
 
     function testSetupStrategyOK() public {
-        console.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
         assertEq(strategy.asset(), address(asset));
         assertEq(strategy.management(), management);
@@ -267,11 +266,42 @@ contract OperationTest is Setup {
             1e9,
             "USDR balance"
         );
+        uint256 usdcBalance = ERC20(tokenAddrs["USDC"]).balanceOf(
+            address(strategy)
+        );
         // some usdc is left
-        assertLt(
+        assertLt(usdcBalance, 1e8, "USDC balance");
+
+        // airdrop pearl token
+        deal(tokenAddrs["PEARL"], address(strategy), usdcBalance * 1e12);
+        // Report profit
+        vm.prank(keeper);
+        (profit, loss) = strategy.report();
+        // Check return Values
+        assertGe(profit, 0, "!profit");
+        assertEq(loss, 0, "!loss");
+
+        // less usdc is left, because we swapped more rewards to usdr
+        assertLe(
             ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
-            1e8,
+            usdcBalance,
             "USDC balance"
         );
+    }
+
+    function test_depositZero() public {
+        mintAndDepositIntoStrategy(strategy, user, 1e18);
+        vm.prank(user);
+        strategy.redeem(1e10, user, user);
+        vm.prank(user);
+        vm.expectRevert("ZERO_SHARES");
+        strategy.deposit(0, user);
+    }
+
+    function test_withdrawZero() public {
+        mintAndDepositIntoStrategy(strategy, user, 1e18);
+        vm.prank(user);
+        vm.expectRevert("ZERO_ASSETS");
+        strategy.redeem(0, user, user);
     }
 }

@@ -21,6 +21,11 @@ contract PearlLPCompounderFactory {
         keeper = _keeper;
     }
 
+    modifier onlyManagement() {
+        require(msg.sender == management, "!management");
+        _;
+    }
+
     /**
      * @notice Deploy a new Pearl Stable LP Compounder Strategy.
      * @dev This will set the msg.sender to all of the permissioned roles.
@@ -44,24 +49,38 @@ contract PearlLPCompounderFactory {
 
         newStrategy.setPendingManagement(management);
 
-        // Review: keep pearl is defaulted at 0 in the strat code.
-        // I would remove this line.
-        newStrategy.setKeepPEARL(0, management);
-
         emit NewPearlLPCompounder(address(newStrategy), _asset);
         return address(newStrategy);
     }
 
-    // Review, why setter functions setting more than one value?
-    // Why there isn't a separated setMgmt, setPerformance..., setKeeper?
-    function setAddresses(
-        address _management,
-        address _perfomanceFeeRecipient,
-        address _keeper
-    ) external {
-        require(msg.sender == management, "!management");
+    /**
+     * @notice Set the management address.
+     * @dev This is the address that can call the management functions.
+     * @param _management The address to set as the management address.
+     */
+    function setManagement(address _management) external onlyManagement {
+        require(_management != address(0), "ZERO_ADDRESS");
         management = _management;
-        performanceFeeRecipient = _perfomanceFeeRecipient;
+    }
+
+    /**
+     * @notice Set the performance fee recipient address.
+     * @dev This is the address that will receive the performance fee.
+     * @param _performanceFeeRecipient The address to set as the performance fee recipient address.
+     */
+    function setPerformanceFeeRecipient(
+        address _performanceFeeRecipient
+    ) external onlyManagement {
+        require(_performanceFeeRecipient != address(0), "ZERO_ADDRESS");
+        performanceFeeRecipient = _performanceFeeRecipient;
+    }
+
+    /**
+     * @notice Set the keeper address.
+     * @dev This is the address that will be able to call the keeper functions.
+     * @param _keeper The address to set as the keeper address.
+     */
+    function setKeeper(address _keeper) external onlyManagement {
         keeper = _keeper;
     }
 }

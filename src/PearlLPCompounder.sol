@@ -64,12 +64,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
     int128 public curveStableIndex = UNSUPPORTED; // index of lp token in Curve AAVE pool
 
-    event PearlCompounderCreated(
-        address indexed lpToken,
-        bool isStable,
-        address rewards
-    );
-
     constructor(
         address _asset,
         string memory _name
@@ -113,29 +107,26 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     type(uint256).max
                 );
                 curveStableIndex = 2; // usdt index
-            } else {
-                // Review: You can review this else statement, default is unsupported.
-                // only 3 stablecoins are supported
-                curveStableIndex = UNSUPPORTED; // not supported
             }
         }
-
-        // Review: factory is already emitting a creation event, remove this.
-        emit PearlCompounderCreated(_asset, isStable, _gauge);
     }
 
     /// @notice Set the amount and address of PEARL to be kept
-    /// @dev cannot be zero address
+    /// @dev cannot set if the address is zero
     /// @param _keepPEARL amount of PEARL to be locked
+    function setKeepPEARL(uint256 _keepPEARL) external onlyManagement {
+        require(keepPearlAddress != address(0), "!keepPearlAddress");
+        keepPEARL = _keepPEARL;
+    }
+
+    /// @notice Set the address to keep PEARL
+    /// @dev cannot be zero address
     /// @param _keepPearlAddress address to keep PEARL
-    // Review: I would use different setters for each instance variable.
-    function setKeepPEARL(
-        uint256 _keepPEARL,
+    function setKeepPEARLAddress(
         address _keepPearlAddress
     ) external onlyManagement {
         require(_keepPearlAddress != address(0), "!keepPearlAddress");
         keepPearlAddress = _keepPearlAddress;
-        keepPEARL = _keepPEARL;
     }
 
     /// @notice Set the amount of PEARL to be sold for asset from each harvest
@@ -204,7 +195,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     /// @notice Get value of rewards in DAI
     /// @return value of PEARL in DAI
-    // Review: when is this going to be used? I would remove.
     function getRewardsValue() external view returns (uint256) {
         uint256 pearlBalance = PEARL.balanceOf(address(this));
         return _getValueOfPearlInDai(pearlBalance);
@@ -222,18 +212,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
      */
     function _freeFunds(uint256 _amount) internal override {
         pearlRewards.withdraw(_amount);
-    }
-
-    /**
-     * @notice Gets the max amount of `asset` that can be withdrawn.
-     * @param . The address that is withdrawing from the strategy.
-     * @return . The available amount that can be withdrawn in terms of `asset`
-     */
-    function availableWithdrawLimit(
-        address //_owner
-    ) public view override returns (uint256) {
-        // Review: why the override? I would leave the default bahavior
-        return balanceOfStakedAssets() + TokenizedStrategy.totalIdle();
     }
 
     /**
@@ -614,9 +592,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         require(_token != asset, "!asset");
         require(_token != address(PEARL), "!PEARL");
         ERC20 token = ERC20(_token);
-        token.safeTransfer(
-            TokenizedStrategy.management(), // Review, why to mgmt instead of to gov?
-            token.balanceOf(address(this))
-        );
+        token.safeTransfer(GOV, token.balanceOf(address(this)));
     }
 }
