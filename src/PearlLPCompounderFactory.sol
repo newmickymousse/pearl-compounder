@@ -23,7 +23,7 @@ contract PearlLPCompounderFactory {
 
     /**
      * @notice Deploy a new Pearl Stable LP Compounder Strategy.
-     * @dev This will set the msg.sender to all of the permisioned roles.
+     * @dev This will set the msg.sender to all of the permissioned roles.
      * @param _asset The underlying asset for the lender to use.
      * @param _name The name for the lender to use.
      * @return . The address of the new lender.
@@ -44,12 +44,16 @@ contract PearlLPCompounderFactory {
 
         newStrategy.setPendingManagement(management);
 
+        // Review: keep pearl is defaulted at 0 in the strat code.
+        // I would remove this line.
         newStrategy.setKeepPEARL(0, management);
 
         emit NewPearlLPCompounder(address(newStrategy), _asset);
         return address(newStrategy);
     }
 
+    // Review, why setter functions setting more than one value?
+    // Why there isn't a separated setMgmt, setPerformance..., setKeeper?
     function setAddresses(
         address _management,
         address _perfomanceFeeRecipient,
