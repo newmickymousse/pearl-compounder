@@ -215,6 +215,17 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /**
+     * @notice Gets the max amount of `asset` that can be withdrawn.
+     * @param . The address that is withdrawing from the strategy.
+     * @return . The available amount that can be withdrawn in terms of `asset`
+     */
+    function availableWithdrawLimit(
+        address //_owner
+    ) public view override returns (uint256) {
+        return balanceOfStakedAssets() + TokenizedStrategy.totalIdle();
+    }
+
+    /**
      * @dev Internal function to harvest all rewards, redeploy any idle
      * funds and return an accurate accounting of all funds currently
      * held by the Strategy.
