@@ -64,12 +64,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
     int128 public curveStableIndex = UNSUPPORTED; // index of lp token in Curve AAVE pool
 
-    event PearlCompounderCreated(
-        address indexed lpToken,
-        bool isStable,
-        address rewards
-    );
-
     constructor(
         address _asset,
         string memory _name
@@ -113,26 +107,26 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     type(uint256).max
                 );
                 curveStableIndex = 2; // usdt index
-            } else {
-                // only 3 stablecoins are supported
-                curveStableIndex = UNSUPPORTED; // not supported
             }
         }
-
-        emit PearlCompounderCreated(_asset, isStable, _gauge);
     }
 
     /// @notice Set the amount and address of PEARL to be kept
-    /// @dev cannot be zero address
+    /// @dev cannot set if the address is zero
     /// @param _keepPEARL amount of PEARL to be locked
+    function setKeepPEARL(uint256 _keepPEARL) external onlyManagement {
+        require(keepPearlAddress != address(0), "!keepPearlAddress");
+        keepPEARL = _keepPEARL;
+    }
+
+    /// @notice Set the address to keep PEARL
+    /// @dev cannot be zero address
     /// @param _keepPearlAddress address to keep PEARL
-    function setKeepPEARL(
-        uint256 _keepPEARL,
+    function setKeepPEARLAddress(
         address _keepPearlAddress
     ) external onlyManagement {
         require(_keepPearlAddress != address(0), "!keepPearlAddress");
         keepPearlAddress = _keepPearlAddress;
-        keepPEARL = _keepPEARL;
     }
 
     /// @notice Set the amount of PEARL to be sold for asset from each harvest
@@ -154,6 +148,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     /// @notice Set if we should use Curve AAVE pool for stable swaps
     /// @param _useCurveStable true if we should use Curve AAVE pool for stable swaps
+    // Review: when would this method be used?
+    // Doesn't the contructor take care of checking if a stable swap is possible?
     function setUseCurveStable(bool _useCurveStable) external onlyManagement {
         require(curveStableIndex != UNSUPPORTED, "!curveUnsupported");
         useCurveStable = _useCurveStable;
@@ -221,7 +217,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     /**
      * @notice Gets the max amount of `asset` that can be withdrawn.
      * @param . The address that is withdrawing from the strategy.
-     * @return . The avialable amount that can be withdrawn in terms of `asset`
+     * @return . The available amount that can be withdrawn in terms of `asset`
      */
     function availableWithdrawLimit(
         address //_owner
@@ -607,9 +603,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         require(_token != asset, "!asset");
         require(_token != address(PEARL), "!PEARL");
         ERC20 token = ERC20(_token);
-        token.safeTransfer(
-            TokenizedStrategy.management(),
-            token.balanceOf(address(this))
-        );
+        token.safeTransfer(GOV, token.balanceOf(address(this)));
     }
 }

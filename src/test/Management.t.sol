@@ -87,7 +87,7 @@ contract OperationTest is Setup {
         vm.prank(gov);
         strategy.sweep(address(airdropedToken));
         assertEq(airdropedToken.balanceOf(address(strategy)), 0);
-        assertEq(airdropedToken.balanceOf(management), amount);
+        assertEq(airdropedToken.balanceOf(gov), amount);
 
         // gov cannot sweep asset
         vm.prank(gov);
