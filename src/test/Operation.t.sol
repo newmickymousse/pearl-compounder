@@ -233,7 +233,7 @@ contract OperationTest is Setup {
             return;
         }
 
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount / 1e3);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);

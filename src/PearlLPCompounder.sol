@@ -63,6 +63,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     uint256 public minRewardsToSell = 30e18; // ~ $9
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
+    /// @notice The difference to favor tokenA compared to tokenB when adding liquidity
+    uint256 public rewardTokenDiff = 470; // 4.7% difference in BPS less for USDR
     /// @notice The address to keep pearl.
     address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
@@ -311,6 +313,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address token,
         uint256 _amount
     ) internal view returns (uint256 amountInUsdr) {
+        console.log("token = ", token);
+        console.log("amount = ", _amount);
         if (token == address(USDR)) {
             return _amount;
         }
@@ -443,6 +447,9 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             address(this),
             block.timestamp
         )[1];
+        console.log("usdrBalance = ", usdrBalance);
+        console.log("tokenA name = ", ERC20(lpToken.token0()).name());
+        console.log("tokenB name = ", ERC20(lpToken.token1()).name());
 
         // get lp reserves
         (
@@ -451,31 +458,32 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             uint256 reservesTokenA,
             uint256 reservesTokenB
         ) = _getLPReserves();
-        bool isTokenAUSDR = tokenA == address(USDR);
-        reservesTokenA /= MAX_BPS;
-        reservesTokenB /= MAX_BPS;
 
-        if (isTokenAUSDR) {
-            reservesTokenB = _getValueInUSDR(tokenB, reservesTokenB);
+        // TokenA_in / TokenB_in = TokenA_reserves / TokenB_reserves
+        // TokenA_in = USDR_balance / 2
+        // TokenB_in = USDR_balance * TokenB_reserves / TokenA_reserves / 2
+        if (tokenA == address(USDR)) {
+            console.log("SWAPPING B");
+            uint256 swapTokenAmount = usdrBalance * reservesTokenB / reservesTokenA / 2;
+            console.log("swapTokenAmount = ", swapTokenAmount);
+            swapTokenAmount = _getOptimalUSDRValueForToken(tokenB, swapTokenAmount);
+            console.log("swapTokenAmount opti = ", swapTokenAmount);
+            if (swapTokenAmount > 0) {
+                // favor tokenB because it will lose some value in swapping
+                swapTokenAmount = swapTokenAmount * (MAX_BPS + rewardTokenDiff) /MAX_BPS;
+                _swapUSDRForToken(swapTokenAmount, tokenB);
+            }
         } else {
-            reservesTokenA = _getValueInUSDR(tokenA, reservesTokenA);
-        }
-        console.log("reservesTokenA = ", reservesTokenA);
-        console.log("reservesTokenB = ", reservesTokenB);
-        uint256 total = reservesTokenA + reservesTokenB;
-        console.log("total = ", total);
-
-
-        if (isTokenAUSDR) {
-            uint256 opti = usdrBalance * reservesTokenB / total / 2;
-            console.log("opti = ", opti);
-            // opti = _getOptimalSwapAmount(tokenB, ERC20(tokenB).balanceOf(address(this)), opti);
-            _swapUSDRForToken(opti, tokenB);
-        } else {
-            uint256 opti = usdrBalance * reservesTokenA / total / 2;
-            console.log("opti = ", opti);
-            // opti = _getOptimalSwapAmount(tokenA, ERC20(tokenA).balanceOf(address(this)), opti);
-            _swapUSDRForToken(opti, tokenA);
+            console.log("SWAPPING A");
+            uint256 swapTokenAmount = usdrBalance * reservesTokenA / reservesTokenB / 2;
+            console.log("swapTokenAmount = ", swapTokenAmount);
+            swapTokenAmount = _getOptimalUSDRValueForToken(tokenA, swapTokenAmount);
+            console.log("swapTokenAmount opti = ", swapTokenAmount);
+            if (swapTokenAmount > 0) {
+                // favor tokenA because it will lose some value in swapping
+                swapTokenAmount = swapTokenAmount * (MAX_BPS + rewardTokenDiff) /MAX_BPS;
+                _swapUSDRForToken(swapTokenAmount, tokenA);
+            }
         }
         console.log("TokenA = ", ERC20(tokenA).balanceOf(address(this)));
         console.log("TokenB = ", ERC20(tokenB).balanceOf(address(this)));
@@ -493,32 +501,26 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             block.timestamp
         );
 
-        console.log("AFTER SWAP");
+        console.log("AFTER ADD LIQUIDITY");
         console.log("TokenA = ", ERC20(tokenA).balanceOf(address(this)));
         console.log("TokenB = ", ERC20(tokenB).balanceOf(address(this)));
     }
 
-    /// @dev caluclate optimal amount of PEARL to swap to tokenIn
-    function _getOptimalSwapAmount(
+    /// @dev caluclate how much USDR we need to swap to get the optimal amount of token
+    function _getOptimalUSDRValueForToken(
         address _tokenIn,
-        uint256 _tokenBalance,
-        uint256 _usdrAmount
+        uint256 _expectedAmountInToken
     ) internal view returns (uint256) {
-        if (_tokenBalance > 0) {
-            uint256 tokenBalanceInUsdr = _getValueInUSDR(
-                _tokenIn,
-                _tokenBalance
-            );
-            if (tokenBalanceInUsdr > _usdrAmount) {
-                // if we already have enough, don't swap
-                _usdrAmount = 0;
-            } else {
-                // swap only what we need
-                _usdrAmount -= tokenBalanceInUsdr;
-            }
+        uint256 tokenBalance = ERC20(_tokenIn).balanceOf(address(this));
+        if (tokenBalance > _expectedAmountInToken) {
+            // if we already have enough, don't swap
+            return 0;
+        } else {
+            // swap only what we need
+            return _getValueInUSDR(_tokenIn, _expectedAmountInToken - tokenBalance);
         }
-        return _usdrAmount;
     }
+    
 
     function _claimRewards() internal returns (uint256) {
         uint256 pearlBalanceBefore = PEARL.balanceOf(address(this));
