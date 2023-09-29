@@ -134,17 +134,22 @@ contract OperationTest is Setup {
         assertEq(strategy.minFeesToClaim(), amount);
     }
 
-    function test_setSwapTokenDiff() public {
-        uint256 swapTokenDiff = 20;
+    function test_setSwapTokenRatio() public {
+        uint256 swapTokenRatio = 20;
 
-        // user cannot change swapTokenDiff
+        // user cannot change swapTokenRatio
         vm.prank(user);
         vm.expectRevert("!Authorized");
-        strategy.setSwapTokenDiff(swapTokenDiff);
+        strategy.setSwapTokenRatio(swapTokenRatio);
 
         // management can change swapTokenDiff
         vm.prank(management);
-        strategy.setSwapTokenDiff(swapTokenDiff);
-        assertEq(strategy.swapTokenDiff(), swapTokenDiff);
+        strategy.setSwapTokenRatio(swapTokenRatio);
+        assertEq(strategy.swapTokenRatio(), swapTokenRatio);
+
+        // cannot change swapTokenRatio above fee dominator
+        vm.prank(management);
+        vm.expectRevert("!swapTokenRatio");
+        strategy.setSwapTokenRatio(10001);
     }
 }

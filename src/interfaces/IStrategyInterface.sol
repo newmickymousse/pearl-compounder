@@ -38,7 +38,7 @@ interface IStrategyInterface is IStrategy {
 
     function minFeesToClaim() external view returns (uint256);
 
-    function setSwapTokenDiff(uint256 _swapTokenDiff) external;
+    function setSwapTokenRatio(uint256 _swapTokenRatio) external;
 
-    function swapTokenDiff() external view returns (uint256);
+    function swapTokenRatio() external view returns (uint256);
 }

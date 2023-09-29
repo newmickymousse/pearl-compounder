@@ -50,8 +50,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public minFeesToClaim = 1e9; // ~ $1
     /// @notice Value in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
-    /// @notice The difference to favor token compared to USDR when swapping and adding liquidity
-    uint256 public swapTokenDiff = 10_050; // favor token by 0.5% compared to USDR because of swapping fees
+    /// @notice The difference to favor token0 compared to token1 when swapping and adding liquidity, 5_000 is equal to both tokens
+    uint256 public swapTokenRatio = 5_000;
     /// @notice The address to keep pearl.
     address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
@@ -147,11 +147,14 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         slippageStable = _slippageStable;
     }
 
-    /// @notice Set the difference to favor tokenX compared to USDR when adding liquidity
-    /// @param _swapTokenDiff MAX_BPS is equal ratio, above keep more token and less USDR,
-    /// below MAX_BPS keep more USDR and less token
-    function setSwapTokenDiff(uint256 _swapTokenDiff) external onlyManagement {
-        swapTokenDiff = _swapTokenDiff;
+    /// @notice Set the ratio of token0 to token1 when adding liquidity
+    /// @param _swapTokenRatio 6_000 is equal to 60% token0 and 40% token1.
+    /// MAX_BPS is max value.
+    function setSwapTokenRatio(
+        uint256 _swapTokenRatio
+    ) external onlyManagement {
+        require(_swapTokenRatio < MAX_BPS, "!swapTokenRatio");
+        swapTokenRatio = _swapTokenRatio;
     }
 
     /// @notice Set if we should use Curve AAVE pool for stable swaps
@@ -323,21 +326,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         );
     }
 
-    function _getLPReserves()
-        internal
-        view
-        returns (
-            address tokenA,
-            address tokenB,
-            uint256 reservesTokenA,
-            uint256 reservesTokenB
-        )
-    {
-        tokenA = lpToken.token0();
-        tokenB = lpToken.token1();
-        (reservesTokenA, reservesTokenB, ) = lpToken.getReserves();
-    }
-
     function _getValueInUSDR(
         address _token,
         uint256 _amount
@@ -476,54 +464,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             block.timestamp
         )[1];
 
-        // get lp reserves
-        (
-            address tokenA,
-            address tokenB,
-            uint256 reservesTokenA,
-            uint256 reservesTokenB
-        ) = _getLPReserves();
-
         // swap only half of the rewards to other token
-        usdrBalance = usdrBalance / 2;
-        if (tokenA == address(USDR)) {
-            _swapUsdrToToken(
-                usdrBalance,
-                reservesTokenA,
-                reservesTokenB,
-                tokenB
-            );
-        } else {
-            _swapUsdrToToken(
-                usdrBalance,
-                reservesTokenB,
-                reservesTokenA,
-                tokenA
-            );
-        }
-    }
-
-    function _swapUsdrToToken(
-        uint256 _usdrAmount,
-        uint256 _usdrResreves,
-        uint256 _tokenReservers,
-        address _tokenAddress
-    ) internal {
-        // TokenA_in / TokenB_in = TokenA_reserves / TokenB_reserves
-        // TokenA = USDR
-        // Token_in = USDR_balance * TokenB_reserves / TokenA_reserves
-        uint256 swapTokenAmount = (_usdrAmount * _tokenReservers) /
-            _usdrResreves;
-        swapTokenAmount = _getOptimalUSDRValueForToken(
-            _tokenAddress,
-            swapTokenAmount
-        );
-        if (swapTokenAmount > 0) {
-            // favor token instead of USDR because it will lose some value in swapping
-            // slither-disable-next-line divide-before-multiply
-            swapTokenAmount = (swapTokenAmount * swapTokenDiff) / MAX_BPS;
-            _swapUSDRForToken(swapTokenAmount, _tokenAddress);
-        }
+        uint256 usdrToToken0 = (usdrBalance * swapTokenRatio) / MAX_BPS;
+        _swapUSDRForToken(usdrToToken0, lpToken.token0());
+        _swapUSDRForToken(usdrBalance - usdrToToken0, lpToken.token1());
     }
 
     function _addLiquidity() internal {
