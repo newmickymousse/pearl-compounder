@@ -50,8 +50,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public minFeesToClaim = 1e9; // ~ $1
     /// @notice Value in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
-    /// @notice The difference to favor tokenA compared to tokenB when adding liquidity
-    uint256 public swapTokenDiff = 100; // 1% difference in BPS less for USDR
+    /// @notice The difference to favor token compared to USDR when swapping and adding liquidity
+    uint256 public swapTokenDiff = 10_050; // favor token by 0.5% compared to USDR because of swapping fees
     /// @notice The address to keep pearl.
     address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
@@ -148,9 +148,9 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /// @notice Set the difference to favor tokenX compared to USDR when adding liquidity
-    /// @param _swapTokenDiff difference in BPS less for USDR
+    /// @param _swapTokenDiff MAX_BPS is equal ratio, above keep more token and less USDR,
+    /// below MAX_BPS keep more USDR and less token
     function setSwapTokenDiff(uint256 _swapTokenDiff) external onlyManagement {
-        require(_swapTokenDiff < MAX_BPS, "!swapTokenDiff");
         swapTokenDiff = _swapTokenDiff;
     }
 
@@ -521,9 +521,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (swapTokenAmount > 0) {
             // favor token instead of USDR because it will lose some value in swapping
             // slither-disable-next-line divide-before-multiply
-            swapTokenAmount =
-                (swapTokenAmount * (MAX_BPS + swapTokenDiff)) /
-                MAX_BPS;
+            swapTokenAmount = (swapTokenAmount * swapTokenDiff) / MAX_BPS;
             _swapUSDRForToken(swapTokenAmount, _tokenAddress);
         }
     }

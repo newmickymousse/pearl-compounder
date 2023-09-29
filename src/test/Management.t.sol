@@ -146,10 +146,5 @@ contract OperationTest is Setup {
         vm.prank(management);
         strategy.setSwapTokenDiff(swapTokenDiff);
         assertEq(strategy.swapTokenDiff(), swapTokenDiff);
-
-        // cannot change swapTokenDiff above fee dominator
-        vm.prank(management);
-        vm.expectRevert("!swapTokenDiff");
-        strategy.setSwapTokenDiff(10001);
     }
 }
