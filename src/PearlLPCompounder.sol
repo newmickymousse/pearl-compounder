@@ -342,6 +342,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address _token,
         uint256 _amount
     ) internal view returns (uint256 amountInUsdr) {
+        // slither-disable-next-line incorrect-equality
         if (_token == address(USDR) || _amount == 0) {
             return _amount;
         }
@@ -519,6 +520,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         );
         if (swapTokenAmount > 0) {
             // favor token instead of USDR because it will lose some value in swapping
+            // slither-disable-next-line divide-before-multiply
             swapTokenAmount =
                 (swapTokenAmount * (MAX_BPS + swapTokenDiff)) /
                 MAX_BPS;
