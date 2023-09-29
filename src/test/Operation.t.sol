@@ -3,6 +3,7 @@ pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
 import {Setup, ERC20} from "./utils/Setup.sol";
+import {IPair} from "../interfaces/PearlFi/IPair.sol";
 
 contract OperationTest is Setup {
     function setUp() public override {
@@ -278,8 +279,8 @@ contract OperationTest is Setup {
         assertGe(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
-        // more usdc is swapped and added to liquidity
-        assertLe(
+        // more usdc is left beacuse there is no amount optimisation
+        assertGe(
             ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
             usdcBalance,
             "USDC balance 2"
@@ -295,7 +296,7 @@ contract OperationTest is Setup {
 
         // swap in equal amounts, more usdr will be left
         vm.prank(management);
-        strategy.setSwapTokenDiff(10_000);
+        strategy.setSwapTokenRatio(5_000);
 
         // airdrop pearl token
         deal(
@@ -319,17 +320,18 @@ contract OperationTest is Setup {
             minPearlToSell,
             "PEARL !=0"
         );
-        assertEq(
-            ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
-            0,
-            "USDC !=0"
-        );
 
-        // some usdr is left
+        IPair pair = IPair(strategy.asset());
+        // some token0 is left beacuse it's inbalanced
         assertGe(
-            ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
+            ERC20(pair.token0()).balanceOf(address(strategy)),
             0,
-            "USDR == 0"
+            "Token0 == 0"
+        );
+        assertEq(
+            ERC20(pair.token1()).balanceOf(address(strategy)),
+            0,
+            "Token1 !=0"
         );
     }
 
@@ -340,9 +342,9 @@ contract OperationTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
         checkStrategyTotals(strategy, _amount, _amount, 0);
 
-        // swap less for token, more left in usdr
+        // swap less for token0, more token1
         vm.prank(management);
-        strategy.setSwapTokenDiff(9_000);
+        strategy.setSwapTokenRatio(4_000);
 
         // airdrop pearl token
         deal(
@@ -366,17 +368,18 @@ contract OperationTest is Setup {
             minPearlToSell,
             "PEARL !=0"
         );
-        assertEq(
-            ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
-            0,
-            "USDC !=0"
-        );
 
-        //
-        assertGe(
-            ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
+        IPair pair = IPair(strategy.asset());
+        // some token0 is left beacuse it's inbalanced
+        assertEq(
+            ERC20(pair.token0()).balanceOf(address(strategy)),
             0,
-            "USDR == 0"
+            "Token0 !=0"
+        );
+        assertGe(
+            ERC20(pair.token1()).balanceOf(address(strategy)),
+            0,
+            "Token1 == 0"
         );
     }
 
@@ -387,9 +390,9 @@ contract OperationTest is Setup {
         mintAndDepositIntoStrategy(strategy, user, _amount);
         checkStrategyTotals(strategy, _amount, _amount, 0);
 
-        // swap more for token, less left in usdr
+        // swap more for token0
         vm.prank(management);
-        strategy.setSwapTokenDiff(11_000);
+        strategy.setSwapTokenRatio(6_000);
 
         // airdrop pearl token
         deal(
@@ -413,18 +416,18 @@ contract OperationTest is Setup {
             minPearlToSell,
             "PEARL !=0"
         );
-        // all usdr is added to liquidity
-        assertEq(
-            ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
-            0,
-            "USDR !=0"
-        );
 
-        // usdc is left
+        IPair pair = IPair(strategy.asset());
+        // some token0 is left
         assertGe(
-            ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
+            ERC20(pair.token0()).balanceOf(address(strategy)),
             0,
-            "USDC == 0"
+            "Token0 == 0"
+        );
+        assertEq(
+            ERC20(pair.token1()).balanceOf(address(strategy)),
+            0,
+            "Token1 !=0"
         );
     }
 
