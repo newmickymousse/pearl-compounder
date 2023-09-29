@@ -484,7 +484,9 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         // TokenB_in = USDR_balance * TokenB_reserves / TokenA_reserves
         uint256 swapTokenAmount = (_usdrAmount * _tokenReservers) /
             _usdrResreves;
+
         // scale down swap amount to swap, usually half
+        // slither-disable-next-line divide-before-multiply
         swapTokenAmount = (swapTokenAmount * swapTokenRatio) / MAX_BPS;
         swapTokenAmount = _getOptimalUSDRValueForToken(
             _tokenAddress,
