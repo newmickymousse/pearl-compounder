@@ -334,24 +334,11 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (_token == address(USDR) || _amount == 0) {
             return _amount;
         }
-
-        if (isStable) {
-            uint8 tokenId = SYNAPSE_STABLE_POOL.getTokenIndex(_token);
-            uint8 daiId = SYNAPSE_STABLE_POOL.getTokenIndex(address(DAI));
-            uint256 amountInDAI = SYNAPSE_STABLE_POOL.calculateSwap(
-                tokenId,
-                daiId,
-                _amount
-            );
-            // use DAI == USDR because it's used only for adding liquidity to pool
-            amountInUsdr = amountInDAI / USDR_TO_DAI_PRECISION;
-        } else {
-            (amountInUsdr, ) = PEARL_ROUTER.getAmountOut(
-                _amount,
-                _token,
-                address(USDR)
-            );
-        }
+        (amountInUsdr, ) = PEARL_ROUTER.getAmountOut(
+            _amount,
+            _token,
+            address(USDR)
+        );
     }
 
     function _swapUSDRForToken(
@@ -451,21 +438,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         return amounts[2]; // 3 amounts, use the last one
     }
 
-    function _getLPReserves()
-        internal
-        view
-        returns (
-            address tokenA,
-            address tokenB,
-            uint256 reservesTokenA,
-            uint256 reservesTokenB
-        )
-    {
-        tokenA = lpToken.token0();
-        tokenB = lpToken.token1();
-        (reservesTokenA, reservesTokenB, ) = lpToken.getReserves();
-    }
-
     function _claimAndSellRewards() internal {
         uint256 pearlBalance = _claimRewards();
         // there is no oracle for PEARL so we use min amount 0
@@ -479,13 +451,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             block.timestamp
         )[1];
 
-        // get lp reserves
-        (
-            address tokenA,
-            address tokenB,
-            uint256 reservesTokenA,
-            uint256 reservesTokenB
-        ) = _getLPReserves();
+        address tokenA = lpToken.token0();
+        address tokenB = lpToken.token1();
+        (uint256 reservesTokenA, uint256 reservesTokenB, ) = lpToken
+            .getReserves();
 
         if (tokenA == address(USDR)) {
             _swapUsdrToToken(
@@ -515,6 +484,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         // TokenB_in = USDR_balance * TokenB_reserves / TokenA_reserves
         uint256 swapTokenAmount = (_usdrAmount * _tokenReservers) /
             _usdrResreves;
+        // scale down swap amount to swap, usually half
         swapTokenAmount = (swapTokenAmount * swapTokenRatio) / MAX_BPS;
         swapTokenAmount = _getOptimalUSDRValueForToken(
             _tokenAddress,
