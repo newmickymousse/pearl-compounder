@@ -279,8 +279,8 @@ contract OperationTest is Setup {
         assertGe(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
-        // more usdc is left beacuse there is no amount optimisation
-        assertGe(
+        // less usdc is left because we optimise swaps
+        assertLe(
             ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
             usdcBalance,
             "USDC balance 2"
@@ -322,13 +322,13 @@ contract OperationTest is Setup {
         );
 
         IPair pair = IPair(strategy.asset());
-        // some token0 is left beacuse it's inbalanced
-        assertGe(
+        assertEq(
             ERC20(pair.token0()).balanceOf(address(strategy)),
             0,
-            "Token0 == 0"
+            "Token0 != 0"
         );
-        assertEq(
+        // some token1 / USDR is left beacuse token0 paid for swapping fees
+        assertGe(
             ERC20(pair.token1()).balanceOf(address(strategy)),
             0,
             "Token1 !=0"

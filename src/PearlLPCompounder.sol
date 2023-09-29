@@ -451,6 +451,21 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         return amounts[2]; // 3 amounts, use the last one
     }
 
+    function _getLPReserves()
+        internal
+        view
+        returns (
+            address tokenA,
+            address tokenB,
+            uint256 reservesTokenA,
+            uint256 reservesTokenB
+        )
+    {
+        tokenA = lpToken.token0();
+        tokenB = lpToken.token1();
+        (reservesTokenA, reservesTokenB, ) = lpToken.getReserves();
+    }
+
     function _claimAndSellRewards() internal {
         uint256 pearlBalance = _claimRewards();
         // there is no oracle for PEARL so we use min amount 0
@@ -464,10 +479,50 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             block.timestamp
         )[1];
 
-        // swap only half of the rewards to other token
-        uint256 usdrToToken0 = (usdrBalance * swapTokenRatio) / MAX_BPS;
-        _swapUSDRForToken(usdrToToken0, lpToken.token0());
-        _swapUSDRForToken(usdrBalance - usdrToToken0, lpToken.token1());
+        // get lp reserves
+        (
+            address tokenA,
+            address tokenB,
+            uint256 reservesTokenA,
+            uint256 reservesTokenB
+        ) = _getLPReserves();
+
+        if (tokenA == address(USDR)) {
+            _swapUsdrToToken(
+                usdrBalance,
+                reservesTokenA,
+                reservesTokenB,
+                tokenB
+            );
+        } else {
+            _swapUsdrToToken(
+                usdrBalance,
+                reservesTokenB,
+                reservesTokenA,
+                tokenA
+            );
+        }
+    }
+
+    function _swapUsdrToToken(
+        uint256 _usdrAmount,
+        uint256 _usdrResreves,
+        uint256 _tokenReservers,
+        address _tokenAddress
+    ) internal {
+        // TokenA_in / TokenB_in = TokenA_reserves / TokenB_reserves
+        // TokenA = USDR
+        // TokenB_in = USDR_balance * TokenB_reserves / TokenA_reserves
+        uint256 swapTokenAmount = (_usdrAmount * _tokenReservers) /
+            _usdrResreves;
+        swapTokenAmount = (swapTokenAmount * swapTokenRatio) / MAX_BPS;
+        swapTokenAmount = _getOptimalUSDRValueForToken(
+            _tokenAddress,
+            swapTokenAmount
+        );
+        if (swapTokenAmount > 0) {
+            _swapUSDRForToken(swapTokenAmount, _tokenAddress);
+        }
     }
 
     function _addLiquidity() internal {
@@ -497,17 +552,15 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address _tokenIn,
         uint256 _expectedAmountInToken
     ) internal view returns (uint256) {
-        uint256 tokenBalance = ERC20(_tokenIn).balanceOf(address(this));
-        if (tokenBalance > _expectedAmountInToken) {
-            // if we already have enough, don't swap
-            return 0;
-        } else {
-            // swap only what we need
-            return
-                _getValueInUSDR(
-                    _tokenIn,
-                    _expectedAmountInToken - tokenBalance
-                );
+        if (_tokenIn != address(USDR)) {
+            uint256 tokenBalance = ERC20(_tokenIn).balanceOf(address(this));
+            if (tokenBalance < _expectedAmountInToken) {
+                return
+                    _getValueInUSDR(
+                        _tokenIn,
+                        _expectedAmountInToken - tokenBalance
+                    );
+            }
         }
     }
 
