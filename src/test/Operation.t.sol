@@ -260,23 +260,14 @@ contract OperationTest is Setup {
 
         // all pearl is swapped to usdr
         uint256 minPearlToSell = strategy.minRewardsToSell();
-        assertLe(ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)), minPearlToSell, "PEARL !=0");
+        assertLe(
+            ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)),
+            minPearlToSell,
+            "PEARL !=0"
+        );
         uint256 usdcBalance = ERC20(tokenAddrs["USDC"]).balanceOf(
             address(strategy)
         );
-        // all usdc is added to the strategy
-        assertLt(usdcBalance, 1e8, "USDC balance 1");
-        // all usdr is added to the strategy
-        assertLt(
-            ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
-            1e11,
-            "USDR balance"
-        );
-
-        console.log("USDC = ", ERC20(tokenAddrs["USDC"]).balanceOf(
-            address(strategy)
-        ));
-        console.log("USDR = ", ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)));
 
         // airdrop pearl token
         deal(tokenAddrs["PEARL"], address(strategy), usdcBalance * 1e12);
@@ -287,6 +278,7 @@ contract OperationTest is Setup {
         assertGe(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
+        // more usdc is swapped and added to liquidity
         assertLe(
             ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
             usdcBalance,

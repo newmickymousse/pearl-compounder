@@ -33,4 +33,12 @@ interface IStrategyInterface is IStrategy {
     function setUseCurveStable(bool _useCurveStable) external;
 
     function useCurveStable() external view returns (bool);
+
+    function setMinFeesToClaim(uint256 _minFeesToClaim) external;
+
+    function minFeesToClaim() external view returns (uint256);
+
+    function setSwapTokenDiff(uint256 _swapTokenDiff) external;
+
+    function swapTokenDiff() external view returns (uint256);
 }

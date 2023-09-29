@@ -15,23 +15,6 @@ import {IUSDRExchange} from "./interfaces/Tangible/IUSDRExchange.sol";
 import {IStableSwapPool} from "./interfaces/Synapse/IStableSwapPool.sol";
 import {ICurvePool} from "./interfaces/Curve/ICurvePool.sol";
 
-
-import "forge-std/console.sol";
-
-
-/**
- * The `TokenizedStrategy` variable can be used to retrieve the strategies
- * specifc storage data your contract.
- *
- *       i.e. uint256 totalAssets = TokenizedStrategy.totalAssets()
- *
- * This can not be used for write functions. Any TokenizedStrategy
- * variables that need to be udpated post deployement will need to
- * come from an external call from the strategies specific `management`.
- */
-
-// NOTE: To implement permissioned functions you can use the onlyManagement and onlyKeepers modifiers
-
 contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     using SafeERC20 for ERC20;
 
@@ -51,7 +34,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ERC20 private constant DAI =
         ERC20(0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063);
 
-    address private constant GOV = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52; //yearn governance @todo change to polygon
+    address private constant GOV = 0xC4ad0000E223E398DC329235e6C497Db5470B626; //yearn governance on polygon
     uint256 private constant USDR_TO_DAI_PRECISION = 1e9;
     int128 private constant CURVE_DAI_INDEX = 0;
     int128 private constant UNSUPPORTED = -99;
@@ -61,10 +44,14 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     bool private immutable isStable;
 
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
-    uint256 public minRewardsToSell = 30e18; // ~ $9
+    /// @notice Value in PEARL
+    uint256 public minRewardsToSell = 10e18; // ~ $3
+    /// @notice Value in USDR
+    uint256 public minFeesToClaim = 1e9; // ~ $1
+    /// @notice Value in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
     /// @notice The difference to favor tokenA compared to tokenB when adding liquidity
-    uint256 public rewardTokenDiff = 470; // 4.7% difference in BPS less for USDR
+    uint256 public swapTokenDiff = 100; // 1% difference in BPS less for USDR
     /// @notice The address to keep pearl.
     address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
@@ -113,7 +100,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     type(uint256).max
                 );
                 curveStableIndex = 2; // usdt index
-            } // curveStableIndex = (lpToken.token0() == usdt || lpToken.token1() == usdt) ? int128(2) : (lpToken.token0() == usdc || lpToken.token1() == usdc) ? int128(1) : UNSUPPORTED;
+            }
         }
     }
 
@@ -143,6 +130,14 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         minRewardsToSell = _minRewardsToSell;
     }
 
+    /// @notice Set the amount of mint fees to be claimed
+    /// @param _minFeesToClaim amount of mint fees to be claimed
+    function setMinFeesToClaim(
+        uint256 _minFeesToClaim
+    ) external onlyManagement {
+        minFeesToClaim = _minFeesToClaim;
+    }
+
     /// @notice Set slippage for swapping stable to stable
     /// @param _slippageStable slippage in BPS
     function setSlippageStable(
@@ -150,6 +145,13 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) external onlyManagement {
         require(_slippageStable < MAX_BPS, "!slippageStable");
         slippageStable = _slippageStable;
+    }
+
+    /// @notice Set the difference to favor tokenX compared to USDR when adding liquidity
+    /// @param _swapTokenDiff difference in BPS less for USDR
+    function setSwapTokenDiff(uint256 _swapTokenDiff) external onlyManagement {
+        require(_swapTokenDiff < MAX_BPS, "!swapTokenDiff");
+        swapTokenDiff = _swapTokenDiff;
     }
 
     /// @notice Set if we should use Curve AAVE pool for stable swaps
@@ -206,6 +208,16 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         return _getValueOfPearlInDai(pearlBalance);
     }
 
+    /// @notice Get value of LP fees in DAI
+    /// @return value of LP fees in DAI
+    function getClaimableFeesValue() external view returns (uint256) {
+        uint256 fees = _getClaimableFees();
+        IPearlRouter.route[] memory routes = new IPearlRouter.route[](1);
+        routes[0] = IPearlRouter.route(address(USDR), address(DAI), true);
+        uint256[] memory amounts = PEARL_ROUTER.getAmountsOut(fees, routes);
+        return amounts[1]; // 2 amounts, use the last one
+    }
+
     /**
      * @dev Will attempt to free the '_amount' of 'asset'.
      *
@@ -244,17 +256,20 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         returns (uint256 _totalAssets)
     {
         if (!TokenizedStrategy.isShutdown()) {
-            // claim lp fees
-            lpToken.claimFees();
+            if (_getClaimableFees() > minFeesToClaim) {
+                lpToken.claimFees();
+            }
 
-            // check if we have enough rewards pending to sell
             if (
                 pearlRewards.earned(address(this)) + balanceOfRewards() >
                 minRewardsToSell
             ) {
                 _claimAndSellRewards();
             }
-            // check if we got someting from selling the loot and deploy it
+
+            // add liquidity earned from fees and rewards
+            _addLiquidity();
+
             uint256 _balanceOfAsset = balanceOfAsset();
             if (_balanceOfAsset > 0) {
                 _deployFunds(_balanceOfAsset);
@@ -275,9 +290,11 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) external view override returns (bool, bytes memory) {
         if (TokenizedStrategy.isShutdown()) return (false, bytes("Shutdown"));
         // gas cost is not concern here
+        // check if there are any rewards or fees to be claimed
         if (
             pearlRewards.earned(address(this)) + balanceOfRewards() >
-            minRewardsToSell
+            minRewardsToSell ||
+            _getClaimableFees() > minFeesToClaim
         ) {
             return (
                 true,
@@ -291,6 +308,18 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                 TokenizedStrategy.profitMaxUnlockTime(),
             // Return the report function sig as the calldata.
             abi.encodeWithSelector(TokenizedStrategy.report.selector)
+        );
+    }
+
+    /// @dev claimable values are update on each deposit/mint and withdraw/burn of lp tokens
+    function _getClaimableFees() internal view returns (uint256 claimable) {
+        claimable = _getValueInUSDR(
+            lpToken.token0(),
+            lpToken.claimable0(address(this))
+        );
+        claimable += _getValueInUSDR(
+            lpToken.token1(),
+            lpToken.claimable1(address(this))
         );
     }
 
@@ -310,17 +339,15 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     function _getValueInUSDR(
-        address token,
+        address _token,
         uint256 _amount
     ) internal view returns (uint256 amountInUsdr) {
-        console.log("token = ", token);
-        console.log("amount = ", _amount);
-        if (token == address(USDR)) {
+        if (_token == address(USDR) || _amount == 0) {
             return _amount;
         }
 
         if (isStable) {
-            uint8 tokenId = SYNAPSE_STABLE_POOL.getTokenIndex(token);
+            uint8 tokenId = SYNAPSE_STABLE_POOL.getTokenIndex(_token);
             uint8 daiId = SYNAPSE_STABLE_POOL.getTokenIndex(address(DAI));
             uint256 amountInDAI = SYNAPSE_STABLE_POOL.calculateSwap(
                 tokenId,
@@ -332,23 +359,23 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         } else {
             (amountInUsdr, ) = PEARL_ROUTER.getAmountOut(
                 _amount,
-                token,
+                _token,
                 address(USDR)
             );
         }
     }
 
     function _swapUSDRForToken(
-        uint256 usdrAmount,
+        uint256 _usdrAmount,
         address _tokenOut
     ) internal returns (uint256 amountOut) {
         if (_tokenOut != address(USDR)) {
             //if we need anything but USDR, let's withdraw from tangible or sell on pearl to get DAI first
             if (isStable) {
-                amountOut = _swapStable(_tokenOut, usdrAmount);
+                amountOut = _swapStable(_tokenOut, _usdrAmount);
             } else {
                 amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
-                    usdrAmount,
+                    _usdrAmount,
                     0,
                     address(USDR),
                     _tokenOut,
@@ -447,9 +474,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             address(this),
             block.timestamp
         )[1];
-        console.log("usdrBalance = ", usdrBalance);
-        console.log("tokenA name = ", ERC20(lpToken.token0()).name());
-        console.log("tokenB name = ", ERC20(lpToken.token1()).name());
 
         // get lp reserves
         (
@@ -459,51 +483,69 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             uint256 reservesTokenB
         ) = _getLPReserves();
 
-        // TokenA_in / TokenB_in = TokenA_reserves / TokenB_reserves
-        // TokenA_in = USDR_balance / 2
-        // TokenB_in = USDR_balance * TokenB_reserves / TokenA_reserves / 2
+        // swap only half of the rewards to other token
+        usdrBalance = usdrBalance / 2;
         if (tokenA == address(USDR)) {
-            console.log("SWAPPING B");
-            uint256 swapTokenAmount = usdrBalance * reservesTokenB / reservesTokenA / 2;
-            console.log("swapTokenAmount = ", swapTokenAmount);
-            swapTokenAmount = _getOptimalUSDRValueForToken(tokenB, swapTokenAmount);
-            console.log("swapTokenAmount opti = ", swapTokenAmount);
-            if (swapTokenAmount > 0) {
-                // favor tokenB because it will lose some value in swapping
-                swapTokenAmount = swapTokenAmount * (MAX_BPS + rewardTokenDiff) /MAX_BPS;
-                _swapUSDRForToken(swapTokenAmount, tokenB);
-            }
+            _swapUsdrToToken(
+                usdrBalance,
+                reservesTokenA,
+                reservesTokenB,
+                tokenB
+            );
         } else {
-            console.log("SWAPPING A");
-            uint256 swapTokenAmount = usdrBalance * reservesTokenA / reservesTokenB / 2;
-            console.log("swapTokenAmount = ", swapTokenAmount);
-            swapTokenAmount = _getOptimalUSDRValueForToken(tokenA, swapTokenAmount);
-            console.log("swapTokenAmount opti = ", swapTokenAmount);
-            if (swapTokenAmount > 0) {
-                // favor tokenA because it will lose some value in swapping
-                swapTokenAmount = swapTokenAmount * (MAX_BPS + rewardTokenDiff) /MAX_BPS;
-                _swapUSDRForToken(swapTokenAmount, tokenA);
-            }
+            _swapUsdrToToken(
+                usdrBalance,
+                reservesTokenB,
+                reservesTokenA,
+                tokenA
+            );
         }
-        console.log("TokenA = ", ERC20(tokenA).balanceOf(address(this)));
-        console.log("TokenB = ", ERC20(tokenB).balanceOf(address(this)));
+    }
 
-        // build lp
-        PEARL_ROUTER.addLiquidity(
-            tokenA,
-            tokenB,
-            isStable,
-            ERC20(tokenA).balanceOf(address(this)),
-            ERC20(tokenB).balanceOf(address(this)),
-            1,
-            1,
-            address(this),
-            block.timestamp
+    function _swapUsdrToToken(
+        uint256 _usdrAmount,
+        uint256 _usdrResreves,
+        uint256 _tokenReservers,
+        address _tokenAddress
+    ) internal {
+        // TokenA_in / TokenB_in = TokenA_reserves / TokenB_reserves
+        // TokenA = USDR
+        // Token_in = USDR_balance * TokenB_reserves / TokenA_reserves
+        uint256 swapTokenAmount = (_usdrAmount * _tokenReservers) /
+            _usdrResreves;
+        swapTokenAmount = _getOptimalUSDRValueForToken(
+            _tokenAddress,
+            swapTokenAmount
         );
+        if (swapTokenAmount > 0) {
+            // favor token instead of USDR because it will lose some value in swapping
+            swapTokenAmount =
+                (swapTokenAmount * (MAX_BPS + swapTokenDiff)) /
+                MAX_BPS;
+            _swapUSDRForToken(swapTokenAmount, _tokenAddress);
+        }
+    }
 
-        console.log("AFTER ADD LIQUIDITY");
-        console.log("TokenA = ", ERC20(tokenA).balanceOf(address(this)));
-        console.log("TokenB = ", ERC20(tokenB).balanceOf(address(this)));
+    function _addLiquidity() internal {
+        address tokenA = lpToken.token0();
+        address tokenB = lpToken.token1();
+
+        uint256 amountA = ERC20(tokenA).balanceOf(address(this));
+        uint256 amountB = ERC20(tokenB).balanceOf(address(this));
+
+        if (amountA > 0 && amountB > 0) {
+            PEARL_ROUTER.addLiquidity(
+                tokenA,
+                tokenB,
+                isStable,
+                amountA,
+                amountB,
+                1,
+                1,
+                address(this),
+                block.timestamp
+            );
+        }
     }
 
     /// @dev caluclate how much USDR we need to swap to get the optimal amount of token
@@ -517,10 +559,13 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             return 0;
         } else {
             // swap only what we need
-            return _getValueInUSDR(_tokenIn, _expectedAmountInToken - tokenBalance);
+            return
+                _getValueInUSDR(
+                    _tokenIn,
+                    _expectedAmountInToken - tokenBalance
+                );
         }
     }
-    
 
     function _claimRewards() internal returns (uint256) {
         uint256 pearlBalanceBefore = PEARL.balanceOf(address(this));
