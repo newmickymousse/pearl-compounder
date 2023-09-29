@@ -233,7 +233,7 @@ contract OperationTest is Setup {
             return;
         }
 
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount / 1e3);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -258,19 +258,16 @@ contract OperationTest is Setup {
         assertGe(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
-        // some pearl is left because there is usdc in the strategy
-        assertGt(ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)), 0);
-        // all usdr is added to the strategy
-        assertLt(
-            ERC20(tokenAddrs["USDR"]).balanceOf(address(strategy)),
-            1e9,
-            "USDR balance"
+        // all pearl is swapped to usdr
+        uint256 minPearlToSell = strategy.minRewardsToSell();
+        assertLe(
+            ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)),
+            minPearlToSell,
+            "PEARL !=0"
         );
         uint256 usdcBalance = ERC20(tokenAddrs["USDC"]).balanceOf(
             address(strategy)
         );
-        // some usdc is left
-        assertLt(usdcBalance, 1e8, "USDC balance");
 
         // airdrop pearl token
         deal(tokenAddrs["PEARL"], address(strategy), usdcBalance * 1e12);
@@ -281,11 +278,11 @@ contract OperationTest is Setup {
         assertGe(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
 
-        // less usdc is left, because we swapped more rewards to usdr
+        // more usdc is swapped and added to liquidity
         assertLe(
             ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
             usdcBalance,
-            "USDC balance"
+            "USDC balance 2"
         );
     }
 

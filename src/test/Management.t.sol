@@ -72,7 +72,7 @@ contract OperationTest is Setup {
     }
 
     function test_sweep() public {
-        address gov = 0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52;
+        address gov = 0xC4ad0000E223E398DC329235e6C497Db5470B626;
         uint256 amount = 1e18;
         ERC20 airdropedToken = new ERC20("AIR", "AR");
         deal(address(airdropedToken), address(strategy), amount);
@@ -119,5 +119,37 @@ contract OperationTest is Setup {
             vm.expectRevert("!curveUnsupported");
             strategy.setUseCurveStable(true);
         }
+    }
+
+    function test_setMinFeesToClaim() public {
+        uint256 amount = 123e19;
+        // user cannot setMinFeesToClaim
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setMinFeesToClaim(amount);
+
+        // management can setMinFeesToClaim
+        vm.prank(management);
+        strategy.setMinFeesToClaim(amount);
+        assertEq(strategy.minFeesToClaim(), amount);
+    }
+
+    function test_setSwapTokenDiff() public {
+        uint256 swapTokenDiff = 20;
+
+        // user cannot change swapTokenDiff
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setSwapTokenDiff(swapTokenDiff);
+
+        // management can change swapTokenDiff
+        vm.prank(management);
+        strategy.setSwapTokenDiff(swapTokenDiff);
+        assertEq(strategy.swapTokenDiff(), swapTokenDiff);
+
+        // cannot change swapTokenDiff above fee dominator
+        vm.prank(management);
+        vm.expectRevert("!swapTokenDiff");
+        strategy.setSwapTokenDiff(10001);
     }
 }
