@@ -438,7 +438,8 @@ contract OperationTest is Setup {
         // set ratio in favor of token
         uint256 ratio;
         if (pair.stable()) {
-            ratio = pair.token0() == usdr ? 5_080 : 4_920;
+            // USDC is more inbalanced
+            ratio = pair.token0() == usdr ? 5_100 : 4_850;
         } else {
             // variable are always 50/50
             ratio = 5_000;
