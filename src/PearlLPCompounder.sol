@@ -50,8 +50,9 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public minFeesToClaim = 1e9; // ~ $1
     /// @notice Value in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
-    /// @notice The difference to favor token0 compared to token1 when swapping and adding liquidity, 5_000 is equal to both tokens
-    uint256 public swapTokenRatio = 5_000;
+    /// @notice Value in BPS of calculated amount to swap from USDR to token, 10_000 is 100%.
+    /// Setting higher value can usefull to calculate in swap fees
+    uint256 public swapTokenRatio = 10_000;
     /// @notice The address to keep pearl.
     address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
@@ -148,12 +149,12 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /// @notice Set the ratio of token0 to token1 when adding liquidity
-    /// @param _swapTokenRatio 6_000 is equal to 60% token0 and 40% token1.
-    /// MAX_BPS is max value.
+    /// @param _swapTokenRatio 10_000 is the calucalted amount, 10_100 is 1% more
+    /// 2 * MAX_BPS is max value.
     function setSwapTokenRatio(
         uint256 _swapTokenRatio
     ) external onlyManagement {
-        require(_swapTokenRatio < MAX_BPS, "!swapTokenRatio");
+        require(_swapTokenRatio < 2 * MAX_BPS, "!swapTokenRatio");
         swapTokenRatio = _swapTokenRatio;
     }
 
@@ -456,6 +457,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         (uint256 reservesTokenA, uint256 reservesTokenB, ) = lpToken
             .getReserves();
 
+        // use half of the USDR to swap for tokenA and leave half is USDR
+        usdrBalance /= 2;
         if (tokenA == address(USDR)) {
             _swapUsdrToToken(
                 usdrBalance,
@@ -481,18 +484,19 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) internal {
         // TokenA_in / TokenB_in = TokenA_reserves / TokenB_reserves
         // TokenA = USDR
-        // TokenB_in = USDR_balance * TokenB_reserves / TokenA_reserves
+        // TokenB_in = USDR_balance * TokenB_reserves / USDR_reserves
         uint256 swapTokenAmount = (_usdrAmount * _tokenReservers) /
             _usdrResreves;
 
-        // scale down swap amount to swap, usually half
+        // calculate amount of USDR to swap for token
         // slither-disable-next-line divide-before-multiply
-        swapTokenAmount = (swapTokenAmount * swapTokenRatio) / MAX_BPS;
         swapTokenAmount = _getOptimalUSDRValueForToken(
             _tokenAddress,
             swapTokenAmount
         );
         if (swapTokenAmount > 0) {
+            // change swap amount if needed
+            swapTokenAmount = (swapTokenAmount * swapTokenRatio) / MAX_BPS;
             _swapUSDRForToken(swapTokenAmount, _tokenAddress);
         }
     }
