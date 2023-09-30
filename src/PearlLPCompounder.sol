@@ -492,25 +492,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         }
     }
 
-    /// @dev caluclate how much USDR we need to swap to get the optimal amount of token
-    function _getOptimalUSDRValueForToken(
-        address _tokenIn,
-        uint256 _expectedAmountInToken
-    ) internal view returns (uint256) {
-        uint256 tokenBalance = ERC20(_tokenIn).balanceOf(address(this));
-        if (tokenBalance > _expectedAmountInToken) {
-            // if we already have enough, don't swap
-            return 0;
-        } else {
-            // swap only what we need
-            return
-                _getValueInUSDR(
-                    _tokenIn,
-                    _expectedAmountInToken - tokenBalance
-                );
-        }
-    }
-
     function _claimRewards() internal returns (uint256) {
         uint256 pearlBalanceBefore = PEARL.balanceOf(address(this));
         pearlRewards.getReward();

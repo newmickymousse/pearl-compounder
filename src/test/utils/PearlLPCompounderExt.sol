@@ -28,11 +28,4 @@ contract PearlLPCompounderExt is PearlLPCompounder {
     ) public view returns (uint256) {
         return _getValueInUSDR(_token, _amount);
     }
-
-    function getOptimalUSDRValueForToken(
-        address _tokenIn,
-        uint256 _expectedAmountInToken
-    ) public view returns (uint256) {
-        return _getOptimalUSDRValueForToken(_tokenIn, _expectedAmountInToken);
-    }
 }
