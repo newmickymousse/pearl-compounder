@@ -330,22 +330,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address _token,
         uint256 _amount
     ) internal view returns (uint256 amountInUsdr) {
-        // slither-disable-next-line incorrect-equality
-        if (_token == address(USDR) || _amount == 0) {
+        if (_token == address(USDR)) {
             return _amount;
         }
-
-        if (isStable) {
-            uint8 tokenId = SYNAPSE_STABLE_POOL.getTokenIndex(_token);
-            uint8 daiId = SYNAPSE_STABLE_POOL.getTokenIndex(address(DAI));
-            uint256 amountInDAI = SYNAPSE_STABLE_POOL.calculateSwap(
-                tokenId,
-                daiId,
-                _amount
-            );
-            // use DAI == USDR because it's used only for adding liquidity to pool
-            amountInUsdr = amountInDAI / USDR_TO_DAI_PRECISION;
-        } else {
+        if (_amount > 0) {
             (amountInUsdr, ) = PEARL_ROUTER.getAmountOut(
                 _amount,
                 _token,
@@ -368,7 +356,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     0,
                     address(USDR),
                     _tokenOut,
-                    false,
+                    false, // not stable swap
                     address(this),
                     block.timestamp
                 )[1];
@@ -380,7 +368,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         address _tokenOut,
         uint256 _usdrAmount
     ) internal returns (uint256 amountOut) {
-        amountOut = _swapToUnderlying(_usdrAmount);
+        amountOut = _swapUsdrToDai(_usdrAmount);
 
         if (_tokenOut != address(DAI)) {
             uint256 minAmountOut = (amountOut * (MAX_BPS - slippageStable)) /
@@ -413,7 +401,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         }
     }
 
-    function _swapToUnderlying(uint256 _usdrAmount) internal returns (uint256) {
+    /// @dev swap USDR to DAI using PEARL router or redeem from tangible
+    function _swapUsdrToDai(uint256 _usdrAmount) internal returns (uint256) {
         // Get the expected amount of `asset` out with the withdrawal fee.
         uint256 outWithFee = (_usdrAmount -
             ((_usdrAmount * USDR_EXCHANGE.withdrawalFee()) / MAX_BPS)) *
@@ -453,13 +442,12 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     function _claimAndSellRewards() internal {
         uint256 pearlBalance = _claimRewards();
-        // there is no oracle for PEARL so we use min amount 0
         uint256 usdrBalance = PEARL_ROUTER.swapExactTokensForTokensSimple(
             pearlBalance,
-            0,
+            0, // there is no oracle for PEARL, use min amount 0
             address(PEARL),
             address(USDR),
-            false,
+            false, // pearl is not stable
             address(this),
             block.timestamp
         )[1];
