@@ -31,6 +31,12 @@ contract PearlLPCompounderFactory {
         _;
     }
 
+    /**
+     * @notice Deploy a new Pearl Stable LP Compounder Strategy.
+     * @param _asset The underlying asset for the lender to use.
+     * @param _name The name for the lender to use.
+     * @return . The address of the new lender.
+     */
     function newPearlLPCompounder(
         address _asset,
         string memory _name
@@ -40,6 +46,13 @@ contract PearlLPCompounderFactory {
         return newStrategy;
     }
 
+    /**
+     * @notice Deploy a new Pearl Stable LP Compounder Strategy. Adds strategy to strategies array.
+     * @dev Only management can call this function.
+     * @param _asset The underlying asset for the lender to use.
+     * @param _name The name for the lender to use.
+     * @return . The address of the new lender.
+     */
     function newPearlLPCompounderPermissioned(
         address _asset,
         string memory _name
@@ -89,13 +102,6 @@ contract PearlLPCompounderFactory {
         return strategies.length;
     }
 
-    /**
-     * @notice Deploy a new Pearl Stable LP Compounder Strategy.
-     * @dev This will set the msg.sender to all of the permissioned roles.
-     * @param _asset The underlying asset for the lender to use.
-     * @param _name The name for the lender to use.
-     * @return . The address of the new lender.
-     */
     function _newPearlLPCompounder(
         address _asset,
         string memory _name
