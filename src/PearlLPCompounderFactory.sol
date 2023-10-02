@@ -6,10 +6,15 @@ import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
 contract PearlLPCompounderFactory {
     event NewPearlLPCompounder(address indexed strategy, address indexed asset);
+    event NewPearlLPCompounderPerimssioned(
+        address indexed strategy,
+        address indexed asset
+    );
 
     address public management;
     address public performanceFeeRecipient;
     address public keeper;
+    address[] public strategies;
 
     constructor(
         address _management,
@@ -26,31 +31,23 @@ contract PearlLPCompounderFactory {
         _;
     }
 
-    /**
-     * @notice Deploy a new Pearl Stable LP Compounder Strategy.
-     * @dev This will set the msg.sender to all of the permissioned roles.
-     * @param _asset The underlying asset for the lender to use.
-     * @param _name The name for the lender to use.
-     * @return . The address of the new lender.
-     */
     function newPearlLPCompounder(
         address _asset,
         string memory _name
     ) external returns (address) {
-        // We need to use the custom interface with the
-        // tokenized strategies available setters.
-        IStrategyInterface newStrategy = IStrategyInterface(
-            address(new PearlLPCompounder(_asset, _name))
-        );
-
-        newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
-
-        newStrategy.setKeeper(keeper);
-
-        newStrategy.setPendingManagement(management);
-
+        address newStrategy = _newPearlLPCompounder(_asset, _name);
         emit NewPearlLPCompounder(address(newStrategy), _asset);
-        return address(newStrategy);
+        return newStrategy;
+    }
+
+    function newPearlLPCompounderPermissioned(
+        address _asset,
+        string memory _name
+    ) external onlyManagement returns (address) {
+        address newStrategy = _newPearlLPCompounder(_asset, _name);
+        strategies.push(newStrategy);
+        emit NewPearlLPCompounderPerimssioned(newStrategy, _asset);
+        return newStrategy;
     }
 
     /**
@@ -82,5 +79,36 @@ contract PearlLPCompounderFactory {
      */
     function setKeeper(address _keeper) external onlyManagement {
         keeper = _keeper;
+    }
+
+    /**
+     * @notice Get the number of strategies depolyed.
+     * @return . Total number of strategies.
+     */
+    function getStrategiesLength() external view returns (uint256) {
+        return strategies.length;
+    }
+
+    /**
+     * @notice Deploy a new Pearl Stable LP Compounder Strategy.
+     * @dev This will set the msg.sender to all of the permissioned roles.
+     * @param _asset The underlying asset for the lender to use.
+     * @param _name The name for the lender to use.
+     * @return . The address of the new lender.
+     */
+    function _newPearlLPCompounder(
+        address _asset,
+        string memory _name
+    ) internal returns (address) {
+        // We need to use the custom interface with the
+        // tokenized strategies available setters.
+        IStrategyInterface newStrategy = IStrategyInterface(
+            address(new PearlLPCompounder(_asset, _name))
+        );
+        newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
+        newStrategy.setKeeper(keeper);
+        newStrategy.setPendingManagement(management);
+
+        return address(newStrategy);
     }
 }

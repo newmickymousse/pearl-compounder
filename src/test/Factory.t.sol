@@ -25,25 +25,73 @@ contract FactoryTest is Setup {
     function test_deploy(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
-        IStrategyInterface strat1 = IStrategyInterface(
-            strategyFactory.newPearlLPCompounder(
+        assertEq(
+            strategyFactory.getStrategiesLength(),
+            0,
+            "!strategies.length"
+        );
+        // user cannot create permissioned strategies
+        vm.prank(user);
+        vm.expectRevert("!management");
+        IStrategyInterface(
+            strategyFactory.newPearlLPCompounderPermissioned(
                 tokenAddrs["USDC-USDR-lp"],
                 "USDC-USDR-lp-compounder"
             )
         );
+
+        // create permissioned strategies
+        vm.prank(management);
+        IStrategyInterface strat1 = IStrategyInterface(
+            strategyFactory.newPearlLPCompounderPermissioned(
+                tokenAddrs["USDC-USDR-lp"],
+                "USDC-USDR-lp-compounder"
+            )
+        );
+        assertEq(
+            strategyFactory.getStrategiesLength(),
+            1,
+            "!strategies.length"
+        );
+        assertEq(
+            strategyFactory.strategies(0),
+            address(strat1),
+            "!strategies[0]"
+        );
+
+        vm.prank(management);
         IStrategyInterface strat2 = IStrategyInterface(
-            strategyFactory.newPearlLPCompounder(
+            strategyFactory.newPearlLPCompounderPermissioned(
                 tokenAddrs["DAI-USDR-lp"],
                 "DAI-USDR-lp-compounder"
             )
         );
+        assertEq(
+            strategyFactory.getStrategiesLength(),
+            2,
+            "!strategies.length"
+        );
+        assertEq(
+            strategyFactory.strategies(1),
+            address(strat2),
+            "!strategies[1]"
+        );
+
+        // created permissionless strategy
+        vm.prank(user);
         IStrategyInterface strat3 = IStrategyInterface(
             strategyFactory.newPearlLPCompounder(
                 tokenAddrs["USDT-USDR-lp"],
                 "USDT-USDR-lp-compounder"
             )
         );
+        assertEq(
+            strategyFactory.getStrategiesLength(),
+            2,
+            "!strategies.length"
+        );
 
+        // all strategies must work correctly
         strategy_testing(strat1, _amount);
         strategy_testing(strat2, _amount);
         strategy_testing(strat3, _amount);
