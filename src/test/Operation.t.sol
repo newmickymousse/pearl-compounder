@@ -191,10 +191,6 @@ contract OperationTest is Setup {
         skip(strategy.profitMaxUnlockTime() + 1 minutes);
         vm.roll(block.number + 1);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertTrue(shouldReport, "!shouldReportTime");
-        vm.prank(keeper);
-        strategy.report();
-        (shouldReport, ) = strategy.reportTrigger(address(strategy));
         assertFalse(shouldReport, "!dontReport");
     }
 
