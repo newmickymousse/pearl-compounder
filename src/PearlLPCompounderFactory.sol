@@ -6,7 +6,7 @@ import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
 contract PearlLPCompounderFactory {
     event NewPearlLPCompounder(address indexed strategy, address indexed asset);
-    event NewPearlLPCompounderPerimssioned(
+    event NewPearlLPCompounderPermissioned(
         address indexed strategy,
         address indexed asset
     );
@@ -59,7 +59,7 @@ contract PearlLPCompounderFactory {
     ) external onlyManagement returns (address) {
         address newStrategy = _newPearlLPCompounder(_asset, _name);
         strategies.push(newStrategy);
-        emit NewPearlLPCompounderPerimssioned(newStrategy, _asset);
+        emit NewPearlLPCompounderPermissioned(newStrategy, _asset);
         return newStrategy;
     }
 
