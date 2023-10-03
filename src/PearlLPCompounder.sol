@@ -262,10 +262,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (!TokenizedStrategy.isShutdown()) {
             if (
                 pearlRewards.earned(address(this)) + balanceOfRewards() >
-                minRewardsToSell
+                minRewardsToSell ||
+                _getClaimableFees() > minFeesToClaim
             ) {
                 _claimAndSellRewards();
-            } else {
                 lpToken.claimFees();
             }
 
