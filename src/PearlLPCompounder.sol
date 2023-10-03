@@ -108,6 +108,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     /// @dev cannot set if the address is zero
     /// @param _keepPEARL amount of PEARL to be locked
     function setKeepPEARL(uint256 _keepPEARL) external onlyManagement {
+        require(_keepPEARL < MAX_BPS, "!keepPEARL");
         require(keepPearlAddress != address(0), "!keepPearlAddress");
         keepPEARL = _keepPEARL;
     }
@@ -259,15 +260,13 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         returns (uint256 _totalAssets)
     {
         if (!TokenizedStrategy.isShutdown()) {
-            if (_getClaimableFees() > minFeesToClaim) {
-                lpToken.claimFees();
-            }
-
             if (
                 pearlRewards.earned(address(this)) + balanceOfRewards() >
-                minRewardsToSell
+                minRewardsToSell ||
+                _getClaimableFees() > minFeesToClaim
             ) {
                 _claimAndSellRewards();
+                lpToken.claimFees();
             }
 
             // add liquidity earned from fees and rewards
@@ -305,13 +304,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             );
         }
 
-        return (
-            // Return true is the full profit unlock time has passed since the last report.
-            block.timestamp - TokenizedStrategy.lastReport() >
-                TokenizedStrategy.profitMaxUnlockTime(),
-            // Return the report function sig as the calldata.
-            abi.encodeWithSelector(TokenizedStrategy.report.selector)
-        );
+        return (false, bytes(""));
     }
 
     /// @dev claimable values are update on each deposit/mint and withdraw/burn of lp tokens
