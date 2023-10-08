@@ -10,7 +10,7 @@ contract OperationTest is Setup {
     }
 
     function test_setMinRewardsToSell() public {
-        uint256 minRewardsToSell = 123e17;
+        uint256 minRewardsToSell = 1;
 
         // user cannot change minRewardsToSell
         vm.prank(user);
@@ -21,6 +21,12 @@ contract OperationTest is Setup {
         vm.prank(management);
         strategy.setMinRewardsToSell(minRewardsToSell);
         assertEq(strategy.minRewardsToSell(), minRewardsToSell);
+
+        // verfiy amount cannot be above setMaxRewardsToSell
+        uint256 maxRewardsToSell = strategy.maxRewardsToSell();
+        vm.prank(management);
+        vm.expectRevert("!minRewardsToSell");
+        strategy.setMinRewardsToSell(maxRewardsToSell);
     }
 
     function test_setSlippageStable() public {
@@ -156,5 +162,25 @@ contract OperationTest is Setup {
         vm.prank(management);
         vm.expectRevert("!swapTokenRatio");
         strategy.setSwapTokenRatio(0);
+    }
+
+    function test_setMaxRewardsToSell() public {
+        uint256 maxRewardsToSell = type(uint256).max;
+
+        // user cannot change maxRewardsToSell
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setMaxRewardsToSell(maxRewardsToSell);
+
+        // management can change maxRewardsToSell
+        vm.prank(management);
+        strategy.setMaxRewardsToSell(maxRewardsToSell);
+        assertEq(strategy.maxRewardsToSell(), maxRewardsToSell);
+
+        // cannot change maxRewardsToSell below minRewardsToSell
+        uint256 minRewardsToSell = strategy.minRewardsToSell();
+        vm.prank(management);
+        vm.expectRevert("!maxRewardsToSell");
+        strategy.setMaxRewardsToSell(minRewardsToSell);
     }
 }

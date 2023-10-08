@@ -95,6 +95,8 @@ contract Setup is ExtendedTest, IEvents {
     function setUpStrategy() public {
         vm.prank(management);
         strategy.acceptManagement();
+        vm.prank(management);
+        strategy.setMaxRewardsToSell(type(uint256).max);
     }
 
     function depositIntoStrategy(

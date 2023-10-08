@@ -41,4 +41,10 @@ interface IStrategyInterface is IStrategy {
     function setSwapTokenRatio(uint256 _swapTokenRatio) external;
 
     function swapTokenRatio() external view returns (uint256);
+
+    function setMaxRewardsToSell(uint256 _maxRewardsToSell) external;
+
+    function maxRewardsToSell() external view returns (uint256);
+
+    function balanceOfRewards() external view returns (uint256);
 }

@@ -46,6 +46,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     /// @notice Value in PEARL
     uint256 public minRewardsToSell = 3e18; // ~ $1
+    /// @notice Max amount of PEARL to sell in single swap
+    uint256 public maxRewardsToSell = 1e20; // ~ $33
     /// @notice Value in USDR
     uint256 public minFeesToClaim = 1e9; // ~ $1
     /// @notice Value in BPS
@@ -138,11 +140,22 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /// @notice Set the amount of PEARL to be sold for asset from each harvest
+    /// @dev cannot be more than maxRewardsToSell
     /// @param _minRewardsToSell amount of PEARL to be sold for asset from each harvest
     function setMinRewardsToSell(
         uint256 _minRewardsToSell
     ) external onlyManagement {
+        require(_minRewardsToSell < maxRewardsToSell, "!minRewardsToSell");
         minRewardsToSell = _minRewardsToSell;
+    }
+
+    /// @notice Set the max amount of PEARL to sell in a single swap
+    /// @param _maxRewardsToSell max amount of PEARL to be sold
+    function setMaxRewardsToSell(
+        uint256 _maxRewardsToSell
+    ) external onlyManagement {
+        require(_maxRewardsToSell > minRewardsToSell, "!maxRewardsToSell");
+        maxRewardsToSell = _maxRewardsToSell;
     }
 
     /// @notice Set the amount of mint fees to be claimed
@@ -373,6 +386,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             if (isStable && curveStableIndex != UNSUPPORTED) {
                 amountOut = _swapStable(_tokenOut, _usdrAmount);
             } else {
+                // this amount is already below maxRewardsToSell, no need to scale down
                 amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
                     _usdrAmount,
                     0,
@@ -474,6 +488,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             return;
         }
 
+        // swap only maxRewardsToSell to minimize loss
+        if (pearlBalance > maxRewardsToSell) {
+            pearlBalance = maxRewardsToSell;
+        }
         uint256 usdrBalance = PEARL_ROUTER.swapExactTokensForTokensSimple(
             pearlBalance,
             0, // there is no oracle for PEARL, use min amount 0
@@ -499,11 +517,15 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         _swapUSDRForToken(usdrBalance - usdrToTokenB, tokenA);
     }
 
+    /// @dev swap half of pearl rewards to other token. Used only if one of LP tokens is PEARL.
     function _handlePearlAsset(uint256 _amount, address swapForToken) internal {
         // pear is volatiale, swap half amount
         // swapTokenRatio can be in favor of token0 or token1, depending on the order
         // swapTokenRatio will probably work in different order, depending on the PEARL position.
         _amount = (_amount * swapTokenRatio) / MAX_BPS / 2;
+        if (_amount > maxRewardsToSell) {
+            _amount = maxRewardsToSell;
+        }
         PEARL_ROUTER.swapExactTokensForTokensSimple(
             _amount,
             0, // there is no oracle for PEARL, use min amount 0

@@ -44,7 +44,7 @@ contract OperationTest is Setup {
         uint256 _amount = maxFuzzAmount;
 
         vm.prank(management);
-        strategy.setMinRewardsToSell(type(uint256).max);
+        strategy.setMinRewardsToSell(type(uint256).max - 1);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -74,5 +74,40 @@ contract OperationTest is Setup {
         // Check return Values
         assertGe(profit, 0, "!profit");
         assertEq(loss, 0, "!loss");
+    }
+
+    function test_rewardsAboveMaxToSell() public {
+        uint256 _amount = maxFuzzAmount;
+
+        vm.prank(management);
+        strategy.setMaxRewardsToSell(1e20);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        checkStrategyTotals(strategy, _amount, _amount, 0);
+
+        // airdpop rewards
+        uint256 rewardsAbove = 1e20;
+        deal(
+            tokenAddrs["PEARL"],
+            address(strategy),
+            strategy.maxRewardsToSell() + rewardsAbove
+        );
+
+        // Report profit
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        // Check return Values
+        assertGe(profit, 0, "!profit");
+        assertEq(loss, 0, "!loss");
+
+        // rewardsAbove should be in the strategy
+        uint256 pearlBalance = ERC20(tokenAddrs["PEARL"]).balanceOf(
+            address(strategy)
+        );
+        assertEq(pearlBalance, rewardsAbove, "!pearlBalance");
+        uint256 balanceOfRewards = strategy.balanceOfRewards();
+        assertEq(balanceOfRewards, pearlBalance, "!balanceOfRewards");
     }
 }

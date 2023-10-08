@@ -172,7 +172,7 @@ contract OperationTest is Setup {
         vm.prank(keeper);
         strategy.report();
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport, "!dontReport");
+        assertFalse(shouldReport, "!dontReportRewards");
 
         // verify reportTrigger for pending rewards
         vm.prank(management);
@@ -186,7 +186,7 @@ contract OperationTest is Setup {
         vm.prank(management);
         strategy.setMinRewardsToSell(minRewardsToSell);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport, "!dontReport");
+        assertFalse(shouldReport, "!dontReportPendingRewards");
 
         // verify reportTrigger for time from last report
         skip(strategy.profitMaxUnlockTime() + 1 minutes);
@@ -196,7 +196,7 @@ contract OperationTest is Setup {
         vm.prank(keeper);
         strategy.report();
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport, "!dontReport");
+        assertFalse(shouldReport, "!dontReportTime");
     }
 
     function test_tendTrigger(uint256 _amount) public {
