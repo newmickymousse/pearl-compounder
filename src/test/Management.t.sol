@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import "forge-std/console.sol";
 import {Setup, ERC20} from "./utils/Setup.sol";
 
-contract OperationTest is Setup {
+contract ManagementTest is Setup {
     function setUp() public override {
         super.setUp();
     }
@@ -182,5 +182,31 @@ contract OperationTest is Setup {
         vm.prank(management);
         vm.expectRevert("!maxRewardsToSell");
         strategy.setMaxRewardsToSell(minRewardsToSell);
+    }
+
+    function test_setKeepPEARL() public {
+        uint256 keepPearl = 20;
+
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setKeepPEARLAddress(user);
+
+        vm.prank(management);
+        strategy.setKeepPEARLAddress(management);
+
+        // user cannot change keepPearl
+        vm.prank(user);
+        vm.expectRevert("!Authorized");
+        strategy.setSwapTokenRatio(keepPearl);
+
+        // management can change keepPearl
+        vm.prank(management);
+        strategy.setKeepPEARL(keepPearl);
+        assertEq(strategy.keepPEARL(), keepPearl);
+
+        // cannot change keepPearl above fee dominator
+        vm.prank(management);
+        vm.expectRevert("!keepPEARL");
+        strategy.setKeepPEARL(10001);
     }
 }
