@@ -43,10 +43,17 @@ contract FactoryTest is Setup {
                 "USDT-USDR-lp-compounder"
             )
         );
+        IStrategyInterface stratPearl = IStrategyInterface(
+            strategyFactory.newPearlLPCompounder(
+                tokenAddrs["PEARL-USDR-lp"],
+                "USDT-USDR-lp-compounder"
+            )
+        );
 
         strategy_testing(stratStable, _amount);
         strategy_testing(stratVolatile, _amount);
         strategy_testing(stratStableNon3Pool, _amount);
+        strategy_testing(stratPearl, _amount);
     }
 
     function strategy_testing(

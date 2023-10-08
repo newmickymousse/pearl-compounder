@@ -53,7 +53,7 @@ contract Setup is ExtendedTest, IEvents {
     function setUp() public virtual {
         _setTokenAddrs();
 
-        asset = ERC20(tokenAddrs["DAI-USDR-lp"]);
+        asset = ERC20(tokenAddrs["USDC-USDR-lp"]);
         // Set decimals
         decimals = asset.decimals();
         strategyFactory = setUpStrategyFactory();
@@ -192,5 +192,9 @@ contract Setup is ExtendedTest, IEvents {
         tokenAddrs[
             "fxDOLA-USDR-lp"
         ] = 0x8B0630Cb57d8E63444E97C19a2e82Bb1988399e2;
+        tokenAddrs[
+            "PEARL-USDR-lp"
+        ] = 0xf68c20d6C50706f6C6bd8eE184382518C93B368c;
+        tokenAddrs["PEARL-CRV-lp"] = 0x700D6E1167472bDc312D9cBBdc7c58C7f4F45120;
     }
 }

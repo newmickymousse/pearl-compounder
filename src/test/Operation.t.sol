@@ -241,6 +241,16 @@ contract OperationTest is Setup {
         vm.prank(management);
         strategy.setSwapTokenRatio(9_000);
 
+        IPair pair = IPair(strategy.asset());
+
+        // pearl is special case if it is second token in pair
+        // for now, pearl is always second token so it changes ratio in swap
+        bool isPearlSecond = pair.token1() == tokenAddrs["PEARL"];
+        if (isPearlSecond) {
+            vm.prank(management);
+            strategy.setSwapTokenRatio(11_000);
+        }
+
         // airdrop pearl token
         deal(tokenAddrs["PEARL"], address(strategy), 1e19);
 
@@ -259,8 +269,6 @@ contract OperationTest is Setup {
             minPearlToSell,
             "PEARL !=0"
         );
-
-        IPair pair = IPair(strategy.asset());
 
         // less is swapped to token1, so it's zero
         assertEq(
@@ -287,6 +295,16 @@ contract OperationTest is Setup {
         vm.prank(management);
         strategy.setSwapTokenRatio(11_000);
 
+        IPair pair = IPair(strategy.asset());
+
+        // pearl is special case if it is second token in pair
+        // for now, pearl is always second token so it changes ratio in swap
+        bool isPearlSecond = pair.token1() == tokenAddrs["PEARL"];
+        if (isPearlSecond) {
+            vm.prank(management);
+            strategy.setSwapTokenRatio(9_000);
+        }
+
         // airdrop pearl token
         deal(tokenAddrs["PEARL"], address(strategy), 1e19);
 
@@ -305,8 +323,6 @@ contract OperationTest is Setup {
             minPearlToSell,
             "PEARL !=0"
         );
-
-        IPair pair = IPair(strategy.asset());
 
         // less is swapped to token0, so it's zero
         assertEq(

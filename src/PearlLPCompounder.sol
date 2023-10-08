@@ -76,9 +76,14 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             address(PEARL_ROUTER),
             type(uint256).max
         );
-
+        uint256 pearlAllowance = PEARL.allowance(
+            address(this),
+            address(PEARL_ROUTER)
+        );
+        if (pearlAllowance == 0) {
+            PEARL.safeApprove(address(PEARL_ROUTER), type(uint256).max);
+        }
         USDR.safeApprove(address(USDR_EXCHANGE), type(uint256).max);
-        PEARL.safeApprove(address(PEARL_ROUTER), type(uint256).max);
 
         isStable = lpToken.stable();
         if (isStable) {
@@ -158,6 +163,8 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /// @notice Set the ratio of token1 to token0 when adding liquidity
+    /// @dev If one token is PEARL, the ratio will probably work in different order,
+    /// depending on the PEARL position. See function `_claimAndSellRewards()` for details.
     /// @param _swapTokenRatio value in BPS, 10_000 is equal to both tokens.
     /// 11_000 is 10% more token1 than token0 from ideal ratio.
     /// 9_000 is 10% more token0. The value must be below 20_000 and above 0.
@@ -456,7 +463,17 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     function _claimAndSellRewards() internal {
+        address tokenA = lpToken.token0();
+        address tokenB = lpToken.token1();
+        address pearl = address(PEARL);
+
         uint256 pearlBalance = _claimRewards();
+        if (tokenA == pearl || tokenB == pearl) {
+            address swapForToken = tokenA == pearl ? tokenB : tokenA;
+            _handlePearlAsset(pearlBalance, swapForToken);
+            return;
+        }
+
         uint256 usdrBalance = PEARL_ROUTER.swapExactTokensForTokensSimple(
             pearlBalance,
             0, // there is no oracle for PEARL, use min amount 0
@@ -468,9 +485,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         )[1];
 
         // swap only half of the rewards to other token
-        address tokenA = lpToken.token0();
-        address tokenB = lpToken.token1();
-
         uint256 ratio;
         if (isStable) {
             ratio = _quoteStableLiquidityRatio(tokenA, tokenB);
@@ -483,6 +497,22 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             MAX_BPS;
         _swapUSDRForToken(usdrToTokenB, tokenB);
         _swapUSDRForToken(usdrBalance - usdrToTokenB, tokenA);
+    }
+
+    function _handlePearlAsset(uint256 _amount, address swapForToken) internal {
+        // pear is volatiale, swap half amount
+        // swapTokenRatio can be in favor of token0 or token1, depending on the order
+        // swapTokenRatio will probably work in different order, depending on the PEARL position.
+        _amount = (_amount * swapTokenRatio) / MAX_BPS / 2;
+        PEARL_ROUTER.swapExactTokensForTokensSimple(
+            _amount,
+            0, // there is no oracle for PEARL, use min amount 0
+            address(PEARL),
+            swapForToken,
+            false, // pearl is not stable
+            address(this),
+            block.timestamp
+        );
     }
 
     function _addLiquidity() internal {
