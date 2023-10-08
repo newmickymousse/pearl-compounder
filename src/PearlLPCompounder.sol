@@ -574,8 +574,9 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         out = (out * 1e18) / decimalsB;
         investment = (investment * 1e18) / decimalsA;
 
+        // slither-disable-next-line divide-before-multiply
         ratio = (((out * 1e18) / investment) * amountA) / amountB;
-
+        // slither-disable-next-line divide-before-multiply
         return (investment * 1e18) / (ratio + 1e18);
     }
 
