@@ -82,12 +82,10 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
         isStable = lpToken.stable();
         if (isStable) {
-            // approve synapse pool for stables only
-            DAI.safeApprove(address(SYNAPSE_STABLE_POOL), type(uint256).max);
-
             // approve curve pool for stables only
             address usdt = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
             address usdc = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+            address dai = address(DAI);
             if (lpToken.token0() == usdc || lpToken.token1() == usdc) {
                 ERC20(address(DAI)).safeApprove(
                     address(CURVE_AAVE_POOL),
@@ -100,6 +98,18 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     type(uint256).max
                 );
                 curveStableIndex = 2; // usdt index
+            } else if (lpToken.token0() == dai || lpToken.token1() == dai) {
+                // cannot use curve for DAI because DAI is the base token in stable
+                // index is used to indicate that it is 3pool token
+                curveStableIndex = CURVE_DAI_INDEX; // dai index
+            }
+
+            if (curveStableIndex != UNSUPPORTED) {
+                // approve synapse pool for 3pool stables only
+                DAI.safeApprove(
+                    address(SYNAPSE_STABLE_POOL),
+                    type(uint256).max
+                );
             }
         }
     }
@@ -160,11 +170,14 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /// @notice Set if we should use Curve AAVE pool for stable swaps
+    /// @dev can use only for USDC and USDT
     /// @param _useCurveStable true if we should use Curve AAVE pool for stable swaps
-    // Review: when would this method be used?
-    // Doesn't the contructor take care of checking if a stable swap is possible?
     function setUseCurveStable(bool _useCurveStable) external onlyManagement {
-        require(curveStableIndex != UNSUPPORTED, "!curveUnsupported");
+        require(
+            curveStableIndex != UNSUPPORTED &&
+                curveStableIndex != CURVE_DAI_INDEX,
+            "!curveUnsupported"
+        );
         useCurveStable = _useCurveStable;
     }
 
@@ -350,7 +363,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) internal returns (uint256 amountOut) {
         if (_tokenOut != address(USDR)) {
             //if we need anything but USDR, let's withdraw from tangible or sell on pearl to get DAI first
-            if (isStable) {
+            if (isStable && curveStableIndex != UNSUPPORTED) {
                 amountOut = _swapStable(_tokenOut, _usdrAmount);
             } else {
                 amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
@@ -358,7 +371,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     0,
                     address(USDR),
                     _tokenOut,
-                    false, // not stable swap
+                    isStable, // can be stable for non 3pool tokens
                     address(this),
                     block.timestamp
                 )[1];

@@ -396,6 +396,40 @@ contract OperationTest is Setup {
         assertLt(amountInUsdr2, 1e9, "USDR >=1e9");
     }
 
+    function test_useCurve(uint256 _amount) public {
+        address assetAddress = address(asset);
+        if (
+            assetAddress != tokenAddrs["USDT-USDR-lp"] &&
+            assetAddress != tokenAddrs["USDC-USDR-lp"]
+        ) {
+            console.log("Skipping test_useCurve");
+            return;
+        }
+        console.log("Running test_useCurve");
+
+        // management can setUseCurveStable
+        vm.prank(management);
+        strategy.setUseCurveStable(true);
+
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        checkStrategyTotals(strategy, _amount, _amount, 0);
+
+        // Earn Interest
+        skip(20 days);
+        vm.roll(block.number + 1);
+
+        // Report profit
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        // Check return Values
+        assertGe(profit, 0, "!profit");
+        assertEq(loss, 0, "!loss");
+    }
+
     function test_depositZero() public {
         mintAndDepositIntoStrategy(strategy, user, 1e18);
         vm.prank(user);
