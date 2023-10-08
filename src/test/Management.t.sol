@@ -150,6 +150,11 @@ contract OperationTest is Setup {
         // cannot change swapTokenRatio above fee dominator
         vm.prank(management);
         vm.expectRevert("!swapTokenRatio");
-        strategy.setSwapTokenRatio(10001);
+        strategy.setSwapTokenRatio(20001);
+
+        // cannot change swapTokenRatio to 0
+        vm.prank(management);
+        vm.expectRevert("!swapTokenRatio");
+        strategy.setSwapTokenRatio(0);
     }
 }
