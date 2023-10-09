@@ -45,13 +45,15 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     /// @notice Value in PEARL
-    uint256 public minRewardsToSell = 10e18; // ~ $3
+    uint256 public minRewardsToSell = 3e18; // ~ $1
+    /// @notice Max amount of PEARL to sell in single swap
+    uint256 public maxRewardsToSell = 1e20; // ~ $33
     /// @notice Value in USDR
     uint256 public minFeesToClaim = 1e9; // ~ $1
     /// @notice Value in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
-    /// @notice The difference to favor token0 compared to token1 when swapping and adding liquidity, 5_000 is equal to both tokens
-    uint256 public swapTokenRatio = 5_000;
+    /// @notice The difference to favor token1 compared to token0 when swapping and adding liquidity, 10_000 is equal to both tokens
+    uint256 public swapTokenRatio = 10_000;
     /// @notice The address to keep pearl.
     address public keepPearlAddress;
     bool public useCurveStable; // if true, use Curve AAVE pool for stable swaps, default synapse
@@ -76,18 +78,21 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
             address(PEARL_ROUTER),
             type(uint256).max
         );
-
+        uint256 pearlAllowance = PEARL.allowance(
+            address(this),
+            address(PEARL_ROUTER)
+        );
+        if (pearlAllowance == 0) {
+            PEARL.safeApprove(address(PEARL_ROUTER), type(uint256).max);
+        }
         USDR.safeApprove(address(USDR_EXCHANGE), type(uint256).max);
-        PEARL.safeApprove(address(PEARL_ROUTER), type(uint256).max);
 
         isStable = lpToken.stable();
         if (isStable) {
-            // approve synapse pool for stables only
-            DAI.safeApprove(address(SYNAPSE_STABLE_POOL), type(uint256).max);
-
             // approve curve pool for stables only
             address usdt = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
             address usdc = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+            address dai = address(DAI);
             if (lpToken.token0() == usdc || lpToken.token1() == usdc) {
                 ERC20(address(DAI)).safeApprove(
                     address(CURVE_AAVE_POOL),
@@ -100,6 +105,18 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                     type(uint256).max
                 );
                 curveStableIndex = 2; // usdt index
+            } else if (lpToken.token0() == dai || lpToken.token1() == dai) {
+                // cannot use curve for DAI because DAI is the base token in stable
+                // index is used to indicate that it is 3pool token
+                curveStableIndex = CURVE_DAI_INDEX; // dai index
+            }
+
+            if (curveStableIndex != UNSUPPORTED) {
+                // approve synapse pool for 3pool stables only
+                DAI.safeApprove(
+                    address(SYNAPSE_STABLE_POOL),
+                    type(uint256).max
+                );
             }
         }
     }
@@ -124,11 +141,22 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     /// @notice Set the amount of PEARL to be sold for asset from each harvest
+    /// @dev cannot be more than maxRewardsToSell
     /// @param _minRewardsToSell amount of PEARL to be sold for asset from each harvest
     function setMinRewardsToSell(
         uint256 _minRewardsToSell
     ) external onlyManagement {
+        require(_minRewardsToSell < maxRewardsToSell, "!minRewardsToSell");
         minRewardsToSell = _minRewardsToSell;
+    }
+
+    /// @notice Set the max amount of PEARL to sell in a single swap
+    /// @param _maxRewardsToSell max amount of PEARL to be sold
+    function setMaxRewardsToSell(
+        uint256 _maxRewardsToSell
+    ) external onlyManagement {
+        require(_maxRewardsToSell > minRewardsToSell, "!maxRewardsToSell");
+        maxRewardsToSell = _maxRewardsToSell;
     }
 
     /// @notice Set the amount of mint fees to be claimed
@@ -148,22 +176,29 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         slippageStable = _slippageStable;
     }
 
-    /// @notice Set the ratio of token0 to token1 when adding liquidity
-    /// @param _swapTokenRatio 6_000 is equal to 60% token0 and 40% token1.
-    /// MAX_BPS is max value.
+    /// @notice Set the ratio of token1 to token0 when adding liquidity
+    /// @dev If one token is PEARL, the ratio will probably work in different order,
+    /// depending on the PEARL position. See function `_claimAndSellRewards()` for details.
+    /// @param _swapTokenRatio value in BPS, 10_000 is equal to both tokens.
+    /// 11_000 is 10% more token1 than token0 from ideal ratio.
+    /// 9_000 is 10% more token0. The value must be below 20_000 and above 0.
     function setSwapTokenRatio(
         uint256 _swapTokenRatio
     ) external onlyManagement {
-        require(_swapTokenRatio < MAX_BPS, "!swapTokenRatio");
+        require(_swapTokenRatio < 2 * MAX_BPS, "!swapTokenRatio");
+        require(_swapTokenRatio > 0, "!swapTokenRatio");
         swapTokenRatio = _swapTokenRatio;
     }
 
     /// @notice Set if we should use Curve AAVE pool for stable swaps
+    /// @dev can use only for USDC and USDT
     /// @param _useCurveStable true if we should use Curve AAVE pool for stable swaps
-    // Review: when would this method be used?
-    // Doesn't the contructor take care of checking if a stable swap is possible?
     function setUseCurveStable(bool _useCurveStable) external onlyManagement {
-        require(curveStableIndex != UNSUPPORTED, "!curveUnsupported");
+        require(
+            curveStableIndex != UNSUPPORTED &&
+                curveStableIndex != CURVE_DAI_INDEX,
+            "!curveUnsupported"
+        );
         useCurveStable = _useCurveStable;
     }
 
@@ -341,15 +376,16 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) internal returns (uint256 amountOut) {
         if (_tokenOut != address(USDR)) {
             //if we need anything but USDR, let's withdraw from tangible or sell on pearl to get DAI first
-            if (isStable) {
+            if (isStable && curveStableIndex != UNSUPPORTED) {
                 amountOut = _swapStable(_tokenOut, _usdrAmount);
             } else {
+                // this amount is already below maxRewardsToSell, no need to scale down
                 amountOut = PEARL_ROUTER.swapExactTokensForTokensSimple(
                     _usdrAmount,
                     0,
                     address(USDR),
                     _tokenOut,
-                    false, // not stable swap
+                    isStable, // can be stable for non 3pool tokens
                     address(this),
                     block.timestamp
                 )[1];
@@ -434,7 +470,21 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     }
 
     function _claimAndSellRewards() internal {
+        address tokenA = lpToken.token0();
+        address tokenB = lpToken.token1();
+        address pearl = address(PEARL);
+
         uint256 pearlBalance = _claimRewards();
+        if (tokenA == pearl || tokenB == pearl) {
+            address swapForToken = tokenA == pearl ? tokenB : tokenA;
+            _handlePearlAsset(pearlBalance, swapForToken);
+            return;
+        }
+
+        // swap only maxRewardsToSell to minimize loss
+        if (pearlBalance > maxRewardsToSell) {
+            pearlBalance = maxRewardsToSell;
+        }
         uint256 usdrBalance = PEARL_ROUTER.swapExactTokensForTokensSimple(
             pearlBalance,
             0, // there is no oracle for PEARL, use min amount 0
@@ -446,9 +496,38 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         )[1];
 
         // swap only half of the rewards to other token
-        uint256 usdrToToken0 = (usdrBalance * swapTokenRatio) / MAX_BPS;
-        _swapUSDRForToken(usdrToToken0, lpToken.token0());
-        _swapUSDRForToken(usdrBalance - usdrToToken0, lpToken.token1());
+        uint256 ratio;
+        if (isStable) {
+            ratio = _quoteStableLiquidityRatio(tokenA, tokenB);
+        } else {
+            ratio = 5e17; // 50% ratio
+        }
+        // ratio is in 1e18, swapTokenRatio is in 1e4
+        uint256 usdrToTokenB = (usdrBalance * ratio * swapTokenRatio) /
+            1e18 /
+            MAX_BPS;
+        _swapUSDRForToken(usdrToTokenB, tokenB);
+        _swapUSDRForToken(usdrBalance - usdrToTokenB, tokenA);
+    }
+
+    /// @dev swap half of pearl rewards to other token. Used only if one of LP tokens is PEARL.
+    function _handlePearlAsset(uint256 _amount, address swapForToken) internal {
+        // pear is volatiale, swap half amount
+        // swapTokenRatio can be in favor of token0 or token1, depending on the order
+        // swapTokenRatio will probably work in different order, depending on the PEARL position.
+        _amount = (_amount * swapTokenRatio) / MAX_BPS / 2;
+        if (_amount > maxRewardsToSell) {
+            _amount = maxRewardsToSell;
+        }
+        PEARL_ROUTER.swapExactTokensForTokensSimple(
+            _amount,
+            0, // there is no oracle for PEARL, use min amount 0
+            address(PEARL),
+            swapForToken,
+            false, // pearl is not stable
+            address(this),
+            block.timestamp
+        );
     }
 
     function _addLiquidity() internal {
@@ -471,6 +550,34 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
                 block.timestamp
             );
         }
+    }
+
+    function _quoteStableLiquidityRatio(
+        address tokenA,
+        address tokenB
+    ) internal view returns (uint256 ratio) {
+        uint256 decimalsA = 10 ** ERC20(tokenA).decimals();
+        uint256 decimalsB = 10 ** ERC20(tokenB).decimals();
+
+        uint256 investment = decimalsA;
+        uint256 out = lpToken.getAmountOut(investment, tokenA);
+        (uint256 amountA, uint256 amountB, ) = PEARL_ROUTER.quoteAddLiquidity(
+            tokenA,
+            tokenB,
+            true,
+            investment,
+            out
+        );
+
+        amountA = (amountA * 1e18) / decimalsA;
+        amountB = (amountB * 1e18) / decimalsB;
+        out = (out * 1e18) / decimalsB;
+        investment = (investment * 1e18) / decimalsA;
+
+        // slither-disable-next-line divide-before-multiply
+        ratio = (((out * 1e18) / investment) * amountA) / amountB;
+        // slither-disable-next-line divide-before-multiply
+        return (investment * 1e18) / (ratio + 1e18);
     }
 
     function _claimRewards() internal returns (uint256) {

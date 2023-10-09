@@ -24,7 +24,7 @@ interface IPearlRouter {
         address tokenB,
         bool stable,
         uint256 liquidity
-    ) external returns (uint256 amountA, uint256 amountB);
+    ) external view returns (uint256 amountA, uint256 amountB);
 
     function quoteAddLiquidity(
         address tokenA,
@@ -32,7 +32,10 @@ interface IPearlRouter {
         bool stable,
         uint256 amountADesired,
         uint256 amountBDesired
-    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
+    )
+        external
+        view
+        returns (uint256 amountA, uint256 amountB, uint256 liquidity);
 
     function addLiquidity(
         address tokenA,
@@ -69,7 +72,7 @@ interface IPearlRouter {
         address tokenA,
         address tokenB,
         bool stable
-    ) external returns (address pair);
+    ) external view returns (address pair);
 
     function swapExactTokensForTokensSimple(
         uint256 amountIn,

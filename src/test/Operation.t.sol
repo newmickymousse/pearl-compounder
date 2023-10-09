@@ -17,6 +17,7 @@ contract OperationTest is Setup {
         assertEq(strategy.management(), management);
         assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
         assertEq(strategy.keeper(), keeper);
+        assertEq(strategy.swapTokenRatio(), 10_000);
         // TODO: add additional check on strat params
     }
 
@@ -171,7 +172,7 @@ contract OperationTest is Setup {
         vm.prank(keeper);
         strategy.report();
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport, "!dontReport");
+        assertFalse(shouldReport, "!dontReportRewards");
 
         // verify reportTrigger for pending rewards
         vm.prank(management);
@@ -185,13 +186,13 @@ contract OperationTest is Setup {
         vm.prank(management);
         strategy.setMinRewardsToSell(minRewardsToSell);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport, "!dontReport");
+        assertFalse(shouldReport, "!dontReportPendingRewards");
 
         // verify reportTrigger for time from last report
         skip(strategy.profitMaxUnlockTime() + 1 minutes);
         vm.roll(block.number + 1);
         (shouldReport, ) = strategy.reportTrigger(address(strategy));
-        assertFalse(shouldReport, "!dontReport");
+        assertFalse(shouldReport, "!dontReportTime");
     }
 
     function test_tendTrigger(uint256 _amount) public {
@@ -225,28 +226,29 @@ contract OperationTest is Setup {
         assertTrue(!strategy.tendTrigger());
     }
 
-    function test_airdropTokens(uint256 _amount, uint64 _airdrop) public {
-        if (address(asset) != tokenAddrs["USDC-USDR-lp"]) {
-            // change values
-            return;
+    function test_lessToken1Swap(uint256 _amount) public {
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        checkStrategyTotals(strategy, _amount, _amount, 0);
+
+        // swap less for token1, more for token0
+        vm.prank(management);
+        strategy.setSwapTokenRatio(9_000);
+
+        IPair pair = IPair(strategy.asset());
+
+        // pearl is special case if it is second token in pair
+        // for now, pearl is always second token so it changes ratio in swap
+        bool isPearlSecond = pair.token1() == tokenAddrs["PEARL"];
+        if (isPearlSecond) {
+            vm.prank(management);
+            strategy.setSwapTokenRatio(11_000);
         }
 
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount / 1e3);
-
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        checkStrategyTotals(strategy, _amount, _amount, 0);
-
-        // airdrop lp token, change token if needed
-        _airdrop = uint64(bound(_airdrop, 100, 1e8));
-        deal(tokenAddrs["USDC"], address(strategy), _airdrop);
-
         // airdrop pearl token
-        deal(
-            tokenAddrs["PEARL"],
-            address(strategy),
-            bound(_amount, minFuzzAmount, 1e22)
-        );
+        deal(tokenAddrs["PEARL"], address(strategy), 1e19);
 
         // Report profit
         vm.prank(keeper);
@@ -263,54 +265,41 @@ contract OperationTest is Setup {
             minPearlToSell,
             "PEARL !=0"
         );
-        uint256 usdcBalance = ERC20(tokenAddrs["USDC"]).balanceOf(
-            address(strategy)
+
+        // less is swapped to token1, so it's zero
+        assertEq(
+            ERC20(pair.token1()).balanceOf(address(strategy)),
+            0,
+            "Token1 != 0"
         );
-
-        // airdrop pearl token
-        deal(tokenAddrs["PEARL"], address(strategy), 1e19);
-        // Report profit
-        vm.prank(keeper);
-        (profit, loss) = strategy.report();
-        // Check return Values
-        assertGe(profit, 0, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        uint256 usdcBalance2 = ERC20(tokenAddrs["USDC"]).balanceOf(
-            address(strategy)
-        );
-        // more usdc is left beacuse there is no amount optimisation
-        assertGe(usdcBalance2, usdcBalance, "USDC balance 2");
-
-        deal(tokenAddrs["PEARL"], address(strategy), 1e19);
-        vm.prank(management);
-        strategy.setSwapTokenRatio(4_000);
-
-        // Report profit
-        vm.prank(keeper);
-        (profit, loss) = strategy.report();
-        // Check return Values
-        assertGe(profit, 0, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        // less usdc is because we swap more for usdr
-        assertLe(
-            ERC20(tokenAddrs["USDC"]).balanceOf(address(strategy)),
-            usdcBalance2,
-            "USDC balance 3"
+        // some token0 is left
+        assertGe(
+            ERC20(pair.token0()).balanceOf(address(strategy)),
+            0,
+            "Token0 == 0"
         );
     }
 
-    function test_equalTokenSwap(uint256 _amount) public {
+    function test_moreToken1Swap(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
         checkStrategyTotals(strategy, _amount, _amount, 0);
 
-        // swap in equal amounts, more usdr will be left
+        // swap more for token1, less for token0
         vm.prank(management);
-        strategy.setSwapTokenRatio(5_000);
+        strategy.setSwapTokenRatio(11_000);
+
+        IPair pair = IPair(strategy.asset());
+
+        // pearl is special case if it is second token in pair
+        // for now, pearl is always second token so it changes ratio in swap
+        bool isPearlSecond = pair.token1() == tokenAddrs["PEARL"];
+        if (isPearlSecond) {
+            vm.prank(management);
+            strategy.setSwapTokenRatio(9_000);
+        }
 
         // airdrop pearl token
         deal(tokenAddrs["PEARL"], address(strategy), 1e19);
@@ -331,93 +320,18 @@ contract OperationTest is Setup {
             "PEARL !=0"
         );
 
-        IPair pair = IPair(strategy.asset());
-        address usdr = tokenAddrs["USDR"];
-        address token = pair.token0() == usdr ? pair.token1() : pair.token0();
-
-        // some usdr is left beacuse it's inbalanced
-        assertLt(ERC20(token).balanceOf(address(strategy)), 1e6, "Token !=0");
-        assertEq(ERC20(usdr).balanceOf(address(strategy)), 0, "USDR == 0");
-    }
-
-    function test_lessTokenSwap(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        checkStrategyTotals(strategy, _amount, _amount, 0);
-
-        // swap less for token0, more left in USDR
-        vm.prank(management);
-        strategy.setSwapTokenRatio(4_000);
-
-        // airdrop pearl token
-        deal(tokenAddrs["PEARL"], address(strategy), 1e19);
-
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
-
-        // Check return Values
-        assertGe(profit, 0, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        // all pearl is swapped to usdr
-        uint256 minPearlToSell = strategy.minRewardsToSell();
-        assertLe(
-            ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)),
-            minPearlToSell,
-            "PEARL !=0"
+        // less is swapped to token0, so it's zero
+        assertEq(
+            ERC20(pair.token0()).balanceOf(address(strategy)),
+            0,
+            "Token0 !=0"
         );
-
-        IPair pair = IPair(strategy.asset());
-        address usdr = tokenAddrs["USDR"];
-        address token = pair.token0() == usdr ? pair.token1() : pair.token0();
-
-        // less is swapped to token, so it's zero
-        assertEq(ERC20(token).balanceOf(address(strategy)), 0, "Token != 0");
-        // some usdr is left
-        assertGe(ERC20(usdr).balanceOf(address(strategy)), 0, "USDR == 0");
-    }
-
-    function test_moreTokenSwap(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        checkStrategyTotals(strategy, _amount, _amount, 0);
-
-        // swap more for token
-        vm.prank(management);
-        strategy.setSwapTokenRatio(6_000);
-
-        // airdrop pearl token
-        deal(tokenAddrs["PEARL"], address(strategy), 1e19);
-
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
-
-        // Check return Values
-        assertGe(profit, 0, "!profit");
-        assertEq(loss, 0, "!loss");
-
-        // all pearl is swapped to usdr
-        uint256 minPearlToSell = strategy.minRewardsToSell();
-        assertLe(
-            ERC20(tokenAddrs["PEARL"]).balanceOf(address(strategy)),
-            minPearlToSell,
-            "PEARL !=0"
-        );
-
-        IPair pair = IPair(strategy.asset());
-        address usdr = tokenAddrs["USDR"];
-        address token = pair.token0() == usdr ? pair.token1() : pair.token0();
-
-        // all usdr is swapped to token
-        assertEq(ERC20(usdr).balanceOf(address(strategy)), 0, "USDR !=0");
         // some token is left
-        assertGe(ERC20(token).balanceOf(address(strategy)), 0, "token == 0");
+        assertGe(
+            ERC20(pair.token1()).balanceOf(address(strategy)),
+            0,
+            "Token1 == 0"
+        );
     }
 
     function test_mulitpleRewardSwap(uint256 _amount) public {
@@ -430,18 +344,6 @@ contract OperationTest is Setup {
         IPair pair = IPair(strategy.asset());
         address usdr = tokenAddrs["USDR"];
         address token = pair.token0() == usdr ? pair.token1() : pair.token0();
-
-        // set ratio in favor of token
-        uint256 ratio;
-        if (pair.stable()) {
-            // USDC is more inbalanced
-            ratio = pair.token0() == usdr ? 5_100 : 4_850;
-        } else {
-            // variable are always 50/50
-            ratio = 5_000;
-        }
-        vm.prank(management);
-        strategy.setSwapTokenRatio(ratio);
 
         // airdrop pearl token
         deal(tokenAddrs["PEARL"], address(strategy), 1e20); // ~ $40
@@ -504,6 +406,40 @@ contract OperationTest is Setup {
         uint256 amountInUsdr2 = _getValueInUsdr(token, tokenBalance2);
         assertGe(usdrBalance2, usdrBalance, "!USDR");
         assertLt(amountInUsdr2, 1e9, "USDR >=1e9");
+    }
+
+    function test_useCurve(uint256 _amount) public {
+        address assetAddress = address(asset);
+        if (
+            assetAddress != tokenAddrs["USDT-USDR-lp"] &&
+            assetAddress != tokenAddrs["USDC-USDR-lp"]
+        ) {
+            console.log("Skipping test_useCurve");
+            return;
+        }
+        console.log("Running test_useCurve");
+
+        // management can setUseCurveStable
+        vm.prank(management);
+        strategy.setUseCurveStable(true);
+
+        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        checkStrategyTotals(strategy, _amount, _amount, 0);
+
+        // Earn Interest
+        skip(20 days);
+        vm.roll(block.number + 1);
+
+        // Report profit
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        // Check return Values
+        assertGe(profit, 0, "!profit");
+        assertEq(loss, 0, "!loss");
     }
 
     function test_depositZero() public {

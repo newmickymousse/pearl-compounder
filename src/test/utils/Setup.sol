@@ -95,6 +95,8 @@ contract Setup is ExtendedTest, IEvents {
     function setUpStrategy() public {
         vm.prank(management);
         strategy.acceptManagement();
+        vm.prank(management);
+        strategy.setMaxRewardsToSell(type(uint256).max);
     }
 
     function depositIntoStrategy(
@@ -188,5 +190,13 @@ contract Setup is ExtendedTest, IEvents {
         tokenAddrs[
             "WMATIC-USDR-lp"
         ] = 0xB4d852b92148eAA16467295975167e640E1FE57A;
+        tokenAddrs["STAR-USDR-lp"] = 0x366dc82D3BFFd482cc405E58bAb3288F2dd32C94;
+        tokenAddrs[
+            "fxDOLA-USDR-lp"
+        ] = 0x8B0630Cb57d8E63444E97C19a2e82Bb1988399e2;
+        tokenAddrs[
+            "PEARL-USDR-lp"
+        ] = 0xf68c20d6C50706f6C6bd8eE184382518C93B368c;
+        tokenAddrs["PEARL-CRV-lp"] = 0x700D6E1167472bDc312D9cBBdc7c58C7f4F45120;
     }
 }

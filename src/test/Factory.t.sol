@@ -25,28 +25,35 @@ contract FactoryTest is Setup {
     function test_deploy(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
 
-        IStrategyInterface strat1 = IStrategyInterface(
+        IStrategyInterface stratStable = IStrategyInterface(
             strategyFactory.newPearlLPCompounder(
                 tokenAddrs["USDC-USDR-lp"],
                 "USDC-USDR-lp-compounder"
             )
         );
-        IStrategyInterface strat2 = IStrategyInterface(
+        IStrategyInterface stratVolatile = IStrategyInterface(
             strategyFactory.newPearlLPCompounder(
-                tokenAddrs["DAI-USDR-lp"],
+                tokenAddrs["WETH-USDR-lp"],
                 "DAI-USDR-lp-compounder"
             )
         );
-        IStrategyInterface strat3 = IStrategyInterface(
+        IStrategyInterface stratStableNon3Pool = IStrategyInterface(
             strategyFactory.newPearlLPCompounder(
-                tokenAddrs["USDT-USDR-lp"],
+                tokenAddrs["STAR-USDR-lp"],
+                "USDT-USDR-lp-compounder"
+            )
+        );
+        IStrategyInterface stratPearl = IStrategyInterface(
+            strategyFactory.newPearlLPCompounder(
+                tokenAddrs["PEARL-USDR-lp"],
                 "USDT-USDR-lp-compounder"
             )
         );
 
-        strategy_testing(strat1, _amount);
-        strategy_testing(strat2, _amount);
-        strategy_testing(strat3, _amount);
+        strategy_testing(stratStable, _amount);
+        strategy_testing(stratVolatile, _amount);
+        strategy_testing(stratStableNon3Pool, _amount);
+        strategy_testing(stratPearl, _amount);
     }
 
     function strategy_testing(
