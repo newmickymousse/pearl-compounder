@@ -77,6 +77,7 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
         vm.label(address(strategyFactory), "strategyFactory");
+        vm.label(address(user), "user");
     }
 
     function setUpStrategyFactory() public returns (IStrategyFactoryInterface) {

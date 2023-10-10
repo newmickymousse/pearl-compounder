@@ -48,8 +48,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     uint256 public minRewardsToSell = 3e18; // ~ $1
     /// @notice Max amount of PEARL to sell in single swap
     uint256 public maxRewardsToSell = 1e20; // ~ $33
-    /// @notice Value in USDR
-    uint256 public minFeesToClaim = 1e9; // ~ $1
     /// @notice Value in BPS
     uint256 public slippageStable = 50; // 0.5% slippage in BPS
     /// @notice The difference to favor token1 compared to token0 when swapping and adding liquidity, 10_000 is equal to both tokens
@@ -157,14 +155,6 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
     ) external onlyManagement {
         require(_maxRewardsToSell > minRewardsToSell, "!maxRewardsToSell");
         maxRewardsToSell = _maxRewardsToSell;
-    }
-
-    /// @notice Set the amount of mint fees to be claimed
-    /// @param _minFeesToClaim amount of mint fees to be claimed
-    function setMinFeesToClaim(
-        uint256 _minFeesToClaim
-    ) external onlyManagement {
-        minFeesToClaim = _minFeesToClaim;
     }
 
     /// @notice Set slippage for swapping stable to stable
@@ -297,15 +287,11 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         if (!TokenizedStrategy.isShutdown()) {
             if (
                 pearlRewards.earned(address(this)) + balanceOfRewards() >
-                minRewardsToSell ||
-                _getClaimableFees() > minFeesToClaim
+                minRewardsToSell
             ) {
                 _claimAndSellRewards();
-                lpToken.claimFees();
+                _addLiquidity();
             }
-
-            // add liquidity earned from fees and rewards
-            _addLiquidity();
 
             uint256 _balanceOfAsset = balanceOfAsset();
             if (_balanceOfAsset > 0) {
@@ -330,8 +316,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         // check if there are any rewards or fees to be claimed
         if (
             pearlRewards.earned(address(this)) + balanceOfRewards() >
-            minRewardsToSell ||
-            _getClaimableFees() > minFeesToClaim
+            minRewardsToSell
         ) {
             return (
                 true,
@@ -595,10 +580,20 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
         return pearlBalance;
     }
 
+    /**
+     * @notice Claim LP fees.
+     * @dev LP fees are earned only if the asset is not deposited into rewards contract.
+     * This scenario is not likely to happen, so it's left only as manual call.
+     */
     function claimFees() external onlyManagement {
         lpToken.claimFees();
     }
 
+    /**
+     * @notice Claim and sell PEARL rewards.
+     * @dev This function is called by report() if there are any rewards to be claimed.
+     * It can be called manually by management.
+     */
     function claimAndSellRewards() external onlyManagement {
         _claimAndSellRewards();
     }
