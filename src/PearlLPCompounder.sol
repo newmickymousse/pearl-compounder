@@ -45,7 +45,7 @@ contract PearlLPCompounder is BaseHealthCheck, CustomStrategyTriggerBase {
 
     uint256 public keepPEARL; // 0 is default. the percentage of PEARL we re-lock for boost (in basis points)
     /// @notice Value in PEARL
-    uint256 public minRewardsToSell = 3e18; // ~ $1
+    uint256 public minRewardsToSell = 6e18; // ~ $2
     /// @notice Max amount of PEARL to sell in single swap
     uint256 public maxRewardsToSell = 1e20; // ~ $33
     /// @notice Value in BPS
