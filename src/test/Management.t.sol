@@ -127,19 +127,6 @@ contract ManagementTest is Setup {
         }
     }
 
-    function test_setMinFeesToClaim() public {
-        uint256 amount = 123e19;
-        // user cannot setMinFeesToClaim
-        vm.prank(user);
-        vm.expectRevert("!Authorized");
-        strategy.setMinFeesToClaim(amount);
-
-        // management can setMinFeesToClaim
-        vm.prank(management);
-        strategy.setMinFeesToClaim(amount);
-        assertEq(strategy.minFeesToClaim(), amount);
-    }
-
     function test_setSwapTokenRatio() public {
         uint256 swapTokenRatio = 20;
 

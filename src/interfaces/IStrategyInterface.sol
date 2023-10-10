@@ -36,10 +36,6 @@ interface IStrategyInterface is IStrategy {
 
     function useCurveStable() external view returns (bool);
 
-    function setMinFeesToClaim(uint256 _minFeesToClaim) external;
-
-    function minFeesToClaim() external view returns (uint256);
-
     function setSwapTokenRatio(uint256 _swapTokenRatio) external;
 
     function swapTokenRatio() external view returns (uint256);
@@ -49,4 +45,6 @@ interface IStrategyInterface is IStrategy {
     function maxRewardsToSell() external view returns (uint256);
 
     function balanceOfRewards() external view returns (uint256);
+
+    function getClaimableFeesValue() external view returns (uint256);
 }
